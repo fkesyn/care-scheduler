@@ -209,7 +209,7 @@ export function MonthlyScheduleDialog({
                 <DialogHeader>
                     <DialogTitle>Agendamento mensal</DialogTitle>
                     <DialogDescription>
-                        Cria marcações em lote para os utentes de um local.
+                        Cria marcações em lote, um utente por dia, por ordem alfabética.
                     </DialogDescription>
                 </DialogHeader>
 

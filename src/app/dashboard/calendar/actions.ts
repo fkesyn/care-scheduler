@@ -75,6 +75,23 @@ type BusySlot = {
     end: number;
 };
 
+async function getExistingProfileId(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    userId: string
+) {
+    const { data, error } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("id", userId)
+        .maybeSingle();
+
+    if (error || !data) {
+        return null;
+    }
+
+    return String(data.id);
+}
+
 function parseTimeToMinutes(timeValue: string) {
     const [hours, minutes] = timeValue.split(":").map(Number);
     return hours * 60 + minutes;
@@ -332,6 +349,8 @@ export async function updateAppointmentDetails(
         };
     }
 
+    const auditProfileId = await getExistingProfileId(supabase, user.id);
+
     const { error } = await supabase
         .from("appointments")
         .update({
@@ -343,8 +362,8 @@ export async function updateAppointmentDetails(
             end_time: formatMinutesAsTime(endMinutes),
             status: appointmentStatus,
             notes: notes || null,
-            updated_by: user.id,
             updated_at: new Date().toISOString(),
+            ...(auditProfileId ? { updated_by: auditProfileId } : {}),
         })
         .eq("id", appointmentId)
         .select("id")
@@ -679,7 +698,7 @@ export async function createMonthlyAppointments(
         end_time: string;
         status: string;
         notes: string;
-        created_by: string;
+        created_by?: string;
     }> = [];
 
     const days = Array.from(
@@ -687,59 +706,48 @@ export async function createMonthlyAppointments(
         (_, index) => startDay + index
     );
 
-    for (const patient of patientRows) {
-        let scheduledSlot:
-            | {
-                  dateValue: string;
-                  start: number;
-                  end: number;
-              }
-            | null = null;
+    if (patientRows.length > days.length) {
+        return {
+            status: "error",
+            message: `Selecionaste ${patientRows.length} utentes, mas só há ${days.length} dias no intervalo escolhido. Nada foi criado.`,
+        };
+    }
 
-        for (const day of days) {
-            const dateValue = formatDateValue(year, monthNumber, day);
-            const busySlots = busySlotsByDate.get(dateValue) ?? [];
-            const slot = findAvailableSlot(
-                busySlots,
-                windowStart,
-                windowEnd,
-                durationMinutes
-            );
+    const auditProfileId = await getExistingProfileId(supabase, user.id);
 
-            if (!slot) {
-                continue;
-            }
+    for (const [index, patient] of patientRows.entries()) {
+        const day = days[index];
+        const dateValue = formatDateValue(year, monthNumber, day);
+        const busySlots = busySlotsByDate.get(dateValue) ?? [];
+        const slot = findAvailableSlot(
+            busySlots,
+            windowStart,
+            windowEnd,
+            durationMinutes
+        );
 
-            busySlots.push(slot);
-            busySlots.sort((a, b) => a.start - b.start);
-            busySlotsByDate.set(dateValue, busySlots);
-
-            scheduledSlot = {
-                dateValue,
-                start: slot.start,
-                end: slot.end,
-            };
-            break;
-        }
-
-        if (!scheduledSlot) {
+        if (!slot) {
             return {
                 status: "error",
-                message: `Não há slots suficientes entre ${startDate} e ${endDate}. Nada foi criado.`,
+                message: `Não há slot livre para ${patient.name} no dia ${day}. Nada foi criado.`,
             };
         }
+
+        busySlots.push(slot);
+        busySlots.sort((a, b) => a.start - b.start);
+        busySlotsByDate.set(dateValue, busySlots);
 
         appointmentsToCreate.push({
             organization_id: organizationId,
             employee_id: employeeId || null,
             patient_id: patient.id,
             service_id: serviceId,
-            scheduled_date: scheduledSlot.dateValue,
-            start_time: formatMinutesAsTime(scheduledSlot.start),
-            end_time: formatMinutesAsTime(scheduledSlot.end),
+            scheduled_date: dateValue,
+            start_time: formatMinutesAsTime(slot.start),
+            end_time: formatMinutesAsTime(slot.end),
             status: "planned",
             notes: "Agendamento mensal",
-            created_by: user.id,
+            ...(auditProfileId ? { created_by: auditProfileId } : {}),
         });
     }
 
