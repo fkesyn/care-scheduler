@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { MonthFilters } from "./month-filters";
+import { MonthlyScheduleDialog } from "./monthly-schedule-dialog";
 
 type MonthPageProps = {
     searchParams: Promise<{
@@ -29,11 +30,14 @@ type PatientOption = {
     id: string;
     name: string;
     location_id: string | null;
+    is_diabetic: boolean | null;
 };
 
 type ServiceOption = {
     id: string;
     name: string;
+    duration_minutes: number | null;
+    measurement_type: string | null;
 };
 
 type AppointmentRelation<T> = T | T[] | null;
@@ -172,12 +176,12 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
             .order("name"),
         supabase
             .from("patients")
-            .select("id, name, location_id")
+            .select("id, name, location_id, is_diabetic")
             .eq("active", true)
             .order("name"),
         supabase
             .from("services")
-            .select("id, name")
+            .select("id, name, duration_minutes, measurement_type")
             .eq("active", true)
             .order("name"),
     ]);
@@ -367,6 +371,17 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                         </Button>
                     </div>
                 </header>
+
+                <div>
+                    <MonthlyScheduleDialog
+                        selectedDate={selectedDate}
+                        selectedLocationId={selectedLocationId}
+                        locations={locationRows}
+                        employees={employeeRows}
+                        patients={patientRows}
+                        services={serviceRows}
+                    />
+                </div>
 
                 <MonthFilters
                     selectedDate={selectedDate}

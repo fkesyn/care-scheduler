@@ -10,6 +10,7 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/server";
+import { EmployeeRowActions } from "./employee-row-actions";
 import { NewEmployeeDialog } from "./new-employee-dialog";
 
 type Employee = {
@@ -19,6 +20,7 @@ type Employee = {
     phone: string | null;
     email: string | null;
     professional_license_number: string | null;
+    notes: string | null;
     active: boolean | null;
 };
 
@@ -45,7 +47,7 @@ export default async function EmployeesPage() {
     const { data: employees, error } = await supabase
         .from("employees")
         .select(
-            "id, name, role, phone, email, professional_license_number, active"
+            "id, name, role, phone, email, professional_license_number, notes, active"
         )
         .order("name");
 
@@ -101,6 +103,7 @@ export default async function EmployeesPage() {
                                     <TableHead>Contacto</TableHead>
                                     <TableHead>Cédula</TableHead>
                                     <TableHead>Estado</TableHead>
+                                    <TableHead className="text-right">Ações</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -134,6 +137,9 @@ export default async function EmployeesPage() {
                                             >
                                                 {employee.active ? "Ativo" : "Inativo"}
                                             </Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                            <EmployeeRowActions employee={employee} />
                                         </TableCell>
                                     </TableRow>
                                 ))}

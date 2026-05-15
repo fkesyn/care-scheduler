@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/server";
 import { NewServiceDialog } from "./new-service-dialog";
+import { ServiceRowActions } from "./service-row-actions";
 
 type Service = {
     id: string;
@@ -91,6 +92,7 @@ export default async function ServicesPage() {
                                     <TableHead>Duração</TableHead>
                                     <TableHead>Registo</TableHead>
                                     <TableHead>Estado</TableHead>
+                                    <TableHead className="text-right">Ações</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -125,12 +127,15 @@ export default async function ServicesPage() {
                                             <TableCell>
                                                 <Badge
                                                     variant={service.active ? "secondary" : "outline"}
-                                                >
-                                                    {service.active ? "Ativo" : "Inativo"}
-                                                </Badge>
-                                            </TableCell>
-                                        </TableRow>
-                                    );
+                                            >
+                                                {service.active ? "Ativo" : "Inativo"}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                            <ServiceRowActions service={service} />
+                                        </TableCell>
+                                    </TableRow>
+                                );
                                 })}
                             </TableBody>
                         </Table>

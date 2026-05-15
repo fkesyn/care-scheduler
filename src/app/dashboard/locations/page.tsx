@@ -10,6 +10,7 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/server";
+import { LocationRowActions } from "./location-row-actions";
 import { NewLocationDialog } from "./new-location-dialog";
 
 type Location = {
@@ -69,6 +70,7 @@ export default async function LocationsPage() {
                                     <TableHead>Nome</TableHead>
                                     <TableHead>Estado</TableHead>
                                     <TableHead>Criado em</TableHead>
+                                    <TableHead className="text-right">Ações</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -86,6 +88,9 @@ export default async function LocationsPage() {
                                                     dateStyle: "medium",
                                                 }).format(new Date(location.created_at))
                                                 : "-"}
+                                        </TableCell>
+                                        <TableCell>
+                                            <LocationRowActions location={location} />
                                         </TableCell>
                                     </TableRow>
                                 ))}

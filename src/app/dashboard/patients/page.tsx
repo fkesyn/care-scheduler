@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/server";
 import { NewPatientDialog } from "./new-patient-dialog";
+import { PatientRowActions } from "./patient-row-actions";
 
 type PatientsPageProps = {
     searchParams: Promise<{
@@ -158,6 +159,7 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
                                     <TableHead>Quarto</TableHead>
                                     <TableHead>Perfil</TableHead>
                                     <TableHead>Estado</TableHead>
+                                    <TableHead className="text-right">Ações</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -183,6 +185,12 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
                                             <Badge variant={patient.active ? "secondary" : "outline"}>
                                                 {patient.active ? "Ativo" : "Inativo"}
                                             </Badge>
+                                        </TableCell>
+                                        <TableCell>
+                                            <PatientRowActions
+                                                patient={patient}
+                                                locations={locationRows}
+                                            />
                                         </TableCell>
                                     </TableRow>
                                 ))}

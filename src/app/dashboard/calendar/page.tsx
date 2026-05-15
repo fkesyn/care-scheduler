@@ -371,18 +371,26 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                                 return (
                                     <AppointmentDetailsDialog
                                         key={appointment.id}
+                                        employees={employeeOptions}
+                                        patients={patientOptions}
+                                        services={serviceOptions}
                                         appointment={{
                                             id: appointment.id,
                                             color: service?.color ?? "#0f766e",
+                                            employeeId: employee?.id ?? null,
                                             employeeLabel: employee
                                                 ? `${employee.name} · ${roleLabel(employee.role)}`
                                                 : null,
                                             locationName,
                                             measurementLabel: measurement,
                                             notes: appointment.notes,
+                                            patientId: patient?.id ?? null,
                                             patientName: patient?.name ?? "Utente removido",
                                             patientRoom: patient?.room ?? null,
+                                            scheduledDate: appointment.scheduled_date,
+                                            serviceId: service?.id ?? null,
                                             serviceName: service?.name ?? "Serviço removido",
+                                            startTime: formatTime(appointment.start_time),
                                             status: appointment.status,
                                             timeLabel: `${formatTime(appointment.start_time)}-${formatTime(
                                                 appointment.end_time
