@@ -35,6 +35,8 @@ export type AppointmentDetails = {
     serviceName: string;
     measurementLabel: string | null;
     employeeLabel: string | null;
+    createdBy: string | null;
+    updatedBy: string | null;
 };
 
 type AppointmentDetailsDialogProps = {
@@ -84,8 +86,8 @@ function statusBadgeVariant(status: string) {
 }
 
 export function AppointmentDetailsDialog({
-    appointment,
-}: AppointmentDetailsDialogProps) {
+                                             appointment,
+                                         }: AppointmentDetailsDialogProps) {
     const [state, formAction] = useActionState(
         updateAppointmentDetails,
         initialState
@@ -103,11 +105,11 @@ export function AppointmentDetailsDialog({
                     className="grid w-full gap-4 p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:grid-cols-[7rem_1fr_auto] sm:items-start"
                 >
                     <div className="flex items-center gap-2 font-medium">
-                        <span
-                            className="size-3 rounded-full"
-                            style={{ backgroundColor: statusColor(appointment.status) }}
-                            aria-hidden="true"
-                        />
+            <span
+                className="size-3 rounded-full"
+                style={{ backgroundColor: statusColor(appointment.status) }}
+                aria-hidden="true"
+            />
                         <span>{appointment.timeLabel}</span>
                     </div>
 
@@ -115,23 +117,24 @@ export function AppointmentDetailsDialog({
                         <div className="flex flex-wrap items-center gap-2">
                             <h2 className="font-medium">{appointment.patientName}</h2>
                             {appointment.patientRoom ? (
-                                <Badge variant="outline">
-                                    Quarto {appointment.patientRoom}
-                                </Badge>
+                                <Badge variant="outline">Quarto {appointment.patientRoom}</Badge>
                             ) : null}
                             {appointment.locationName ? (
                                 <Badge variant="outline">{appointment.locationName}</Badge>
                             ) : null}
                         </div>
+
                         <p className="text-sm text-muted-foreground">
                             {appointment.serviceName}
                             {appointment.measurementLabel
                                 ? ` · ${appointment.measurementLabel}`
                                 : ""}
                         </p>
+
                         <p className="text-sm text-muted-foreground">
                             {appointment.employeeLabel ?? "Sem responsável atribuído"}
                         </p>
+
                         {appointment.notes ? (
                             <p className="text-sm text-foreground">{appointment.notes}</p>
                         ) : null}
@@ -142,6 +145,7 @@ export function AppointmentDetailsDialog({
                     </Badge>
                 </button>
             </DialogTrigger>
+
             <DialogContent>
                 <DialogHeader>
                     <DialogTitle>{appointment.patientName}</DialogTitle>
@@ -155,11 +159,7 @@ export function AppointmentDetailsDialog({
                     action={formAction}
                     className="grid gap-4"
                 >
-                    <input
-                        type="hidden"
-                        name="appointment_id"
-                        value={appointment.id}
-                    />
+                    <input type="hidden" name="appointment_id" value={appointment.id} />
 
                     <div className="grid gap-3 rounded-md border p-3 text-sm">
                         <div className="flex flex-wrap items-center gap-2">
@@ -169,15 +169,32 @@ export function AppointmentDetailsDialog({
                                 <Badge variant="outline">{appointment.locationName}</Badge>
                             ) : null}
                         </div>
+
                         <p className="text-muted-foreground">
                             {appointment.employeeLabel ?? "Sem responsável atribuído"}
                         </p>
+
+                        {(appointment.createdBy || appointment.updatedBy) ? (
+                            <div className="rounded-md bg-muted/50 p-3 text-xs text-muted-foreground">
+                                {appointment.createdBy ? (
+                                    <p>
+                                        <span className="font-medium text-foreground">Criado por:</span>{" "}
+                                        {appointment.createdBy}
+                                    </p>
+                                ) : null}
+
+                                {appointment.updatedBy ? (
+                                    <p>
+                                        <span className="font-medium text-foreground">Editado por:</span>{" "}
+                                        {appointment.updatedBy}
+                                    </p>
+                                ) : null}
+                            </div>
+                        ) : null}
                     </div>
 
                     <div className="grid gap-2">
-                        <Label htmlFor={`appointment-status-${appointment.id}`}>
-                            Estado
-                        </Label>
+                        <Label htmlFor={`appointment-status-${appointment.id}`}>Estado</Label>
                         <select
                             id={`appointment-status-${appointment.id}`}
                             name="status"
@@ -185,22 +202,21 @@ export function AppointmentDetailsDialog({
                             className={cn(
                                 "h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
                                 visibleState.fieldErrors?.appointmentStatus &&
-                                    "border-destructive ring-3 ring-destructive/20"
+                                "border-destructive ring-3 ring-destructive/20"
                             )}
                             aria-describedby={
                                 visibleState.fieldErrors?.appointmentStatus
                                     ? `appointment-status-error-${appointment.id}`
                                     : undefined
                             }
-                            aria-invalid={Boolean(
-                                visibleState.fieldErrors?.appointmentStatus
-                            )}
+                            aria-invalid={Boolean(visibleState.fieldErrors?.appointmentStatus)}
                             required
                         >
                             <option value="planned">Planeado</option>
                             <option value="completed">Concluído</option>
                             <option value="canceled">Cancelado</option>
                         </select>
+
                         {visibleState.fieldErrors?.appointmentStatus ? (
                             <p
                                 id={`appointment-status-error-${appointment.id}`}
@@ -212,9 +228,7 @@ export function AppointmentDetailsDialog({
                     </div>
 
                     <div className="grid gap-2">
-                        <Label htmlFor={`appointment-notes-${appointment.id}`}>
-                            Notas
-                        </Label>
+                        <Label htmlFor={`appointment-notes-${appointment.id}`}>Notas</Label>
                         <Textarea
                             id={`appointment-notes-${appointment.id}`}
                             name="notes"

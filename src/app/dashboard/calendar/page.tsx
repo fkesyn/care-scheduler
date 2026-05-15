@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { Button } from "@/components/ui/button";
@@ -10,7 +11,6 @@ import {
     type AppointmentPatientOption,
     type AppointmentServiceOption,
 } from "./new-appointment-dialog";
-import {redirect} from "next/navigation";
 
 type CalendarPageProps = {
     searchParams: Promise<{
@@ -69,6 +69,11 @@ type AppointmentEmployee = {
     role: string;
 };
 
+type AppointmentProfile = {
+    full_name: string | null;
+    email: string | null;
+};
+
 type Appointment = {
     id: string;
     scheduled_date: string;
@@ -79,6 +84,8 @@ type Appointment = {
     employees: AppointmentEmployee | AppointmentEmployee[] | null;
     patients: AppointmentPatient | AppointmentPatient[] | null;
     services: AppointmentService | AppointmentService[] | null;
+    created_profile: AppointmentProfile | AppointmentProfile[] | null;
+    updated_profile: AppointmentProfile | AppointmentProfile[] | null;
 };
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -151,6 +158,10 @@ function firstRelation<T>(relation: T | T[] | null) {
     return relation;
 }
 
+function profileLabel(profile: AppointmentProfile | null) {
+    return profile?.full_name ?? profile?.email ?? null;
+}
+
 export default async function CalendarPage({ searchParams }: CalendarPageProps) {
     await connection();
 
@@ -159,6 +170,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
     if (!params.date) {
         redirect(`/dashboard/calendar/month?date=${formatDateInput(new Date())}`);
     }
+
     const selectedDate =
         params.date && datePattern.test(params.date)
             ? params.date
@@ -193,31 +205,39 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             .from("appointments")
             .select(
                 `
-                id,
-                scheduled_date,
-                start_time,
-                end_time,
-                status,
-                notes,
-                employees (
-                    id,
-                    name,
-                    role
-                ),
-                patients (
-                    id,
-                    name,
-                    room,
-                    location_id
-                ),
-                services (
-                    id,
-                    name,
-                    color,
-                    duration_minutes,
-                    measurement_type
-                )
-            `
+          id,
+          scheduled_date,
+          start_time,
+          end_time,
+          status,
+          notes,
+          employees (
+            id,
+            name,
+            role
+          ),
+          patients (
+            id,
+            name,
+            room,
+            location_id
+          ),
+          services (
+            id,
+            name,
+            color,
+            duration_minutes,
+            measurement_type
+          ),
+          created_profile:profiles!appointments_created_by_fkey (
+            full_name,
+            email
+          ),
+          updated_profile:profiles!appointments_updated_by_fkey (
+            full_name,
+            email
+          )
+        `
             )
             .eq("scheduled_date", selectedDate)
             .order("start_time"),
@@ -238,13 +258,6 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                     <p className="text-sm text-destructive">
                         Erro ao carregar calendário: {loadError.message}
                     </p>
-                    <p className="text-sm text-muted-foreground">
-                        Se a tabela ainda não existir, aplica a migration em{" "}
-                        <code>
-                            supabase/migrations/20260515135000_appointments_crud.sql
-                        </code>
-                        .
-                    </p>
                 </div>
             </div>
         );
@@ -255,6 +268,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
     const patientRows = (patients ?? []) as Patient[];
     const serviceRows = (services ?? []) as Service[];
     const appointmentRows = (appointments ?? []) as Appointment[];
+
     const locationNameById = new Map(
         locationRows.map((location) => [location.id, location.name] as const)
     );
@@ -267,22 +281,26 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
         })
     );
 
-    const patientOptions: AppointmentPatientOption[] = patientRows.map((patient) => ({
-        id: patient.id,
-        name: patient.name,
-        room: patient.room,
-        isDiabetic: Boolean(patient.is_diabetic),
-        locationName: patient.location_id
-            ? locationNameById.get(patient.location_id) ?? "Sem local"
-            : "Sem local",
-    }));
+    const patientOptions: AppointmentPatientOption[] = patientRows.map(
+        (patient) => ({
+            id: patient.id,
+            name: patient.name,
+            room: patient.room,
+            isDiabetic: Boolean(patient.is_diabetic),
+            locationName: patient.location_id
+                ? locationNameById.get(patient.location_id) ?? "Sem local"
+                : "Sem local",
+        })
+    );
 
-    const serviceOptions: AppointmentServiceOption[] = serviceRows.map((service) => ({
-        id: service.id,
-        name: service.name,
-        durationMinutes: service.duration_minutes ?? 30,
-        measurementType: service.measurement_type,
-    }));
+    const serviceOptions: AppointmentServiceOption[] = serviceRows.map(
+        (service) => ({
+            id: service.id,
+            name: service.name,
+            durationMinutes: service.duration_minutes ?? 30,
+            measurementType: service.measurement_type,
+        })
+    );
 
     return (
         <div className="p-6">
@@ -295,6 +313,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                                 {formatDateLabel(selectedDate)}
                             </p>
                         </div>
+
                         <NewAppointmentDialog
                             employees={employeeOptions}
                             patients={patientOptions}
@@ -309,16 +328,19 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                                 Dia anterior
                             </Link>
                         </Button>
+
                         <Button asChild size="sm" variant="secondary">
                             <Link href={`/dashboard/calendar?date=${formatDateInput(new Date())}`}>
                                 Hoje
                             </Link>
                         </Button>
+
                         <Button asChild size="sm" variant="outline">
                             <Link href={`/dashboard/calendar?date=${addDays(selectedDate, 1)}`}>
                                 Dia seguinte
                             </Link>
                         </Button>
+
                         <Button asChild size="sm" variant="outline">
                             <Link href={`/dashboard/calendar/month?date=${selectedDate}`}>
                                 Ver mês
@@ -338,11 +360,12 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                                 const employee = firstRelation(appointment.employees);
                                 const patient = firstRelation(appointment.patients);
                                 const service = firstRelation(appointment.services);
+                                const createdProfile = firstRelation(appointment.created_profile);
+                                const updatedProfile = firstRelation(appointment.updated_profile);
+
                                 const measurement = measurementLabel(service?.measurement_type);
                                 const locationName = patient?.location_id
-                                    ? locationNameById.get(
-                                          patient.location_id
-                                      ) ?? null
+                                    ? locationNameById.get(patient.location_id) ?? null
                                     : null;
 
                                 return (
@@ -357,15 +380,15 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                                             locationName,
                                             measurementLabel: measurement,
                                             notes: appointment.notes,
-                                            patientName:
-                                                patient?.name ?? "Utente removido",
+                                            patientName: patient?.name ?? "Utente removido",
                                             patientRoom: patient?.room ?? null,
-                                            serviceName:
-                                                service?.name ?? "Serviço removido",
+                                            serviceName: service?.name ?? "Serviço removido",
                                             status: appointment.status,
-                                            timeLabel: `${formatTime(
-                                                appointment.start_time
-                                            )}-${formatTime(appointment.end_time)}`,
+                                            timeLabel: `${formatTime(appointment.start_time)}-${formatTime(
+                                                appointment.end_time
+                                            )}`,
+                                            createdBy: profileLabel(createdProfile),
+                                            updatedBy: profileLabel(updatedProfile),
                                         }}
                                     />
                                 );

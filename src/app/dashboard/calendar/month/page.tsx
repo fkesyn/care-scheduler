@@ -36,35 +36,23 @@ type ServiceOption = {
     name: string;
 };
 
+type AppointmentRelation<T> = T | T[] | null;
+
 type Appointment = {
     id: string;
     scheduled_date: string;
     start_time: string;
     status: string;
-    patients:
-        | {
+    patients: AppointmentRelation<{
         id: string;
         name: string;
         location_id: string | null;
-    }
-        | {
-        id: string;
-        name: string;
-        location_id: string | null;
-    }[]
-        | null;
-    services:
-        | {
+    }>;
+    services: AppointmentRelation<{
         id: string;
         name: string;
         color: string | null;
-    }
-        | {
-        id: string;
-        name: string;
-        color: string | null;
-    }[]
-        | null;
+    }>;
 };
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -88,6 +76,7 @@ function addMonths(dateValue: string, months: number) {
 
     return formatDateInput(date);
 }
+
 function statusColor(status: string) {
     if (status === "completed") {
         return "#16a34a";
@@ -342,10 +331,6 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
         current.push(appointment);
         appointmentsByDate.set(appointment.scheduled_date, current);
     }
-
-    const filteredPatients = patientRows.filter(
-        (patient) => !selectedLocationId || patient.location_id === selectedLocationId
-    );
 
     return (
         <div className="p-6">

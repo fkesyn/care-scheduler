@@ -339,7 +339,7 @@ begin
     raise exception 'Invalid appointment end time';
   end if;
 
-  insert into public.appointments (
+insert into public.appointments (
     organization_id,
     patient_id,
     service_id,
@@ -347,18 +347,20 @@ begin
     start_time,
     end_time,
     status,
-    notes
-  )
-  values (
-    current_organization_id,
-    p_patient_id,
-    p_service_id,
-    p_scheduled_date,
-    p_start_time,
-    computed_end_time,
-    normalized_status,
-    nullif(trim(p_notes), '')
-  )
+    notes,
+    created_by
+)
+values (
+           current_organization_id,
+           p_patient_id,
+           p_service_id,
+           p_scheduled_date,
+           p_start_time,
+           computed_end_time,
+           normalized_status,
+           nullif(trim(p_notes), ''),
+           auth.uid()
+       )
   returning id into created_appointment_id;
 
   return created_appointment_id;

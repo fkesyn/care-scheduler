@@ -152,6 +152,8 @@ export async function updateAppointmentDetails(
         .update({
             status: appointmentStatus,
             notes: notes || null,
+            updated_by: user.id,
+            updated_at: new Date().toISOString(),
         })
         .eq("id", appointmentId)
         .select("id")
