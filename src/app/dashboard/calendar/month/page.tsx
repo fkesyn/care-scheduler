@@ -4,8 +4,6 @@ import { connection } from "next/server";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { MonthFilters } from "./month-filters";
-import { redirect } from "next/navigation";
-
 
 type MonthPageProps = {
     searchParams: Promise<{
@@ -42,6 +40,7 @@ type Appointment = {
     id: string;
     scheduled_date: string;
     start_time: string;
+    status: string;
     patients:
         | {
         id: string;
@@ -88,6 +87,17 @@ function addMonths(dateValue: string, months: number) {
     date.setMonth(date.getMonth() + months);
 
     return formatDateInput(date);
+}
+function statusColor(status: string) {
+    if (status === "completed") {
+        return "#16a34a";
+    }
+
+    if (status === "canceled") {
+        return "#dc2626";
+    }
+
+    return "#facc15";
 }
 
 function formatMonthLabel(dateValue: string) {
@@ -272,6 +282,7 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
         id,
         scheduled_date,
         start_time,
+        status,
         patients!inner (
           id,
           name,
@@ -435,7 +446,7 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                           <span
                               className="mr-1 inline-block size-2 rounded-full"
                               style={{
-                                  backgroundColor: service?.color ?? "#0f766e",
+                                  backgroundColor: statusColor(appointment.status),
                               }}
                           />
                                                     {formatTime(appointment.start_time)} ·{" "}

@@ -67,6 +67,18 @@ function statusLabel(status: string) {
     return "Planeado";
 }
 
+function statusColor(status: string) {
+    if (status === "completed") {
+        return "#16a34a";
+    }
+
+    if (status === "canceled") {
+        return "#dc2626";
+    }
+
+    return "#facc15";
+}
+
 function statusBadgeVariant(status: string) {
     return status === "planned" ? "secondary" : "outline";
 }
@@ -93,7 +105,7 @@ export function AppointmentDetailsDialog({
                     <div className="flex items-center gap-2 font-medium">
                         <span
                             className="size-3 rounded-full"
-                            style={{ backgroundColor: appointment.color }}
+                            style={{ backgroundColor: statusColor(appointment.status) }}
                             aria-hidden="true"
                         />
                         <span>{appointment.timeLabel}</span>
