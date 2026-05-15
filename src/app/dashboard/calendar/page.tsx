@@ -15,6 +15,10 @@ import {
 type CalendarPageProps = {
     searchParams: Promise<{
         date?: string;
+        locationId?: string;
+        employeeId?: string;
+        patientId?: string;
+        serviceId?: string;
     }>;
 };
 
@@ -162,13 +166,61 @@ function profileLabel(profile: AppointmentProfile | null) {
     return profile?.full_name ?? profile?.email ?? null;
 }
 
+function buildCalendarHref(
+    dateValue: string,
+    filters: {
+        locationId?: string;
+        employeeId?: string;
+        patientId?: string;
+        serviceId?: string;
+    }
+) {
+    const query = new URLSearchParams();
+
+    query.set("date", dateValue);
+
+    if (filters.locationId) query.set("locationId", filters.locationId);
+    if (filters.employeeId) query.set("employeeId", filters.employeeId);
+    if (filters.patientId) query.set("patientId", filters.patientId);
+    if (filters.serviceId) query.set("serviceId", filters.serviceId);
+
+    return `/dashboard/calendar?${query.toString()}`;
+}
+
+function buildMonthHref(
+    dateValue: string,
+    filters: {
+        locationId?: string;
+        employeeId?: string;
+        patientId?: string;
+        serviceId?: string;
+    }
+) {
+    const query = new URLSearchParams();
+
+    query.set("date", dateValue);
+
+    if (filters.locationId) query.set("locationId", filters.locationId);
+    if (filters.employeeId) query.set("employeeId", filters.employeeId);
+    if (filters.patientId) query.set("patientId", filters.patientId);
+    if (filters.serviceId) query.set("serviceId", filters.serviceId);
+
+    return `/dashboard/calendar/month?${query.toString()}`;
+}
+
 export default async function CalendarPage({ searchParams }: CalendarPageProps) {
     await connection();
 
     const params = await searchParams;
+    const monthFilters = {
+        locationId: params.locationId,
+        employeeId: params.employeeId,
+        patientId: params.patientId,
+        serviceId: params.serviceId,
+    };
 
     if (!params.date) {
-        redirect(`/dashboard/calendar/month?date=${formatDateInput(new Date())}`);
+        redirect(buildMonthHref(formatDateInput(new Date()), monthFilters));
     }
 
     const selectedDate =
@@ -324,25 +376,40 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
 
                     <div className="flex flex-wrap items-center gap-2">
                         <Button asChild size="sm" variant="outline">
-                            <Link href={`/dashboard/calendar?date=${addDays(selectedDate, -1)}`}>
+                            <Link
+                                href={buildCalendarHref(
+                                    addDays(selectedDate, -1),
+                                    monthFilters
+                                )}
+                            >
                                 Dia anterior
                             </Link>
                         </Button>
 
                         <Button asChild size="sm" variant="secondary">
-                            <Link href={`/dashboard/calendar?date=${formatDateInput(new Date())}`}>
+                            <Link
+                                href={buildCalendarHref(
+                                    formatDateInput(new Date()),
+                                    monthFilters
+                                )}
+                            >
                                 Hoje
                             </Link>
                         </Button>
 
                         <Button asChild size="sm" variant="outline">
-                            <Link href={`/dashboard/calendar?date=${addDays(selectedDate, 1)}`}>
+                            <Link
+                                href={buildCalendarHref(
+                                    addDays(selectedDate, 1),
+                                    monthFilters
+                                )}
+                            >
                                 Dia seguinte
                             </Link>
                         </Button>
 
                         <Button asChild size="sm" variant="outline">
-                            <Link href={`/dashboard/calendar/month?date=${selectedDate}`}>
+                            <Link href={buildMonthHref(selectedDate, monthFilters)}>
                                 Ver mês
                             </Link>
                         </Button>

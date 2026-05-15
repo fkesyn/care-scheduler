@@ -35,6 +35,25 @@ export type DeleteAppointmentState = {
     message?: string;
 };
 
+export type DeleteMonthlyAppointmentsState = {
+    status: "idle" | "success" | "error";
+    message?: string;
+    fieldErrors?: {
+        month?: string;
+    };
+};
+
+export type UpdateMonthlyAppointmentsStatusState = {
+    status: "idle" | "success" | "error";
+    message?: string;
+    fieldErrors?: {
+        month?: string;
+        serviceId?: string;
+        employeeId?: string;
+        appointmentStatus?: string;
+    };
+};
+
 export type CreateMonthlyAppointmentsState = {
     status: "idle" | "success" | "error";
     message?: string;
@@ -429,6 +448,188 @@ export async function deleteAppointment(
     return {
         status: "success",
         message: "Marcação apagada.",
+    };
+}
+
+export async function deleteMonthlyAppointments(
+    _previousState: DeleteMonthlyAppointmentsState,
+    formData: FormData
+): Promise<DeleteMonthlyAppointmentsState> {
+    const month = String(formData.get("month") ?? "").trim();
+
+    if (!monthPattern.test(month)) {
+        return {
+            status: "error",
+            message: "Escolhe um mês válido.",
+            fieldErrors: {
+                month: "Mês inválido.",
+            },
+        };
+    }
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+        return {
+            status: "error",
+            message: "A sessão expirou. Faz login novamente.",
+        };
+    }
+
+    const { data: organizationId, error: organizationError } = await supabase.rpc(
+        "my_organization_id"
+    );
+
+    if (organizationError || !organizationId) {
+        return {
+            status: "error",
+            message: "Não consegui encontrar a organização deste utilizador.",
+        };
+    }
+
+    const [year, monthNumber] = month.split("-").map(Number);
+    const daysInMonth = new Date(year, monthNumber, 0).getDate();
+    const startDate = formatDateValue(year, monthNumber, 1);
+    const endDate = formatDateValue(year, monthNumber, daysInMonth);
+
+    const { data, error } = await supabase
+        .from("appointments")
+        .delete()
+        .eq("organization_id", organizationId)
+        .gte("scheduled_date", startDate)
+        .lte("scheduled_date", endDate)
+        .select("id");
+
+    if (error) {
+        return {
+            status: "error",
+            message: `Não consegui limpar o mês: ${error.message}`,
+        };
+    }
+
+    const deletedCount = data?.length ?? 0;
+
+    revalidatePath("/dashboard/calendar");
+    revalidatePath("/dashboard/calendar/month");
+
+    return {
+        status: "success",
+        message:
+            deletedCount === 0
+                ? "Não havia marcações para apagar neste mês."
+                : `${deletedCount} marcações apagadas deste mês.`,
+    };
+}
+
+export async function updateMonthlyAppointmentsStatus(
+    _previousState: UpdateMonthlyAppointmentsStatusState,
+    formData: FormData
+): Promise<UpdateMonthlyAppointmentsStatusState> {
+    const month = String(formData.get("month") ?? "").trim();
+    const serviceId = String(formData.get("service_id") ?? "").trim();
+    const employeeId = String(formData.get("employee_id") ?? "").trim();
+    const appointmentStatus = String(formData.get("status") ?? "").trim();
+
+    const fieldErrors: UpdateMonthlyAppointmentsStatusState["fieldErrors"] = {};
+
+    if (!monthPattern.test(month)) {
+        fieldErrors.month = "Escolhe um mês válido.";
+    }
+
+    if (!uuidPattern.test(serviceId)) {
+        fieldErrors.serviceId = "Escolhe um serviço.";
+    }
+
+    if (
+        employeeId &&
+        employeeId !== "unassigned" &&
+        !uuidPattern.test(employeeId)
+    ) {
+        fieldErrors.employeeId = "Escolhe um funcionário válido.";
+    }
+
+    if (!appointmentStatuses.has(appointmentStatus)) {
+        fieldErrors.appointmentStatus = "Escolhe um estado válido.";
+    }
+
+    if (Object.keys(fieldErrors).length > 0) {
+        return {
+            status: "error",
+            message: "Confirma os campos obrigatórios.",
+            fieldErrors,
+        };
+    }
+
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+        return {
+            status: "error",
+            message: "A sessão expirou. Faz login novamente.",
+        };
+    }
+
+    const { data: organizationId, error: organizationError } = await supabase.rpc(
+        "my_organization_id"
+    );
+
+    if (organizationError || !organizationId) {
+        return {
+            status: "error",
+            message: "Não consegui encontrar a organização deste utilizador.",
+        };
+    }
+
+    const [year, monthNumber] = month.split("-").map(Number);
+    const daysInMonth = new Date(year, monthNumber, 0).getDate();
+    const startDate = formatDateValue(year, monthNumber, 1);
+    const endDate = formatDateValue(year, monthNumber, daysInMonth);
+    const auditProfileId = await getExistingProfileId(supabase, user.id);
+
+    let updateQuery = supabase
+        .from("appointments")
+        .update({
+            status: appointmentStatus,
+            updated_at: new Date().toISOString(),
+            ...(auditProfileId ? { updated_by: auditProfileId } : {}),
+        })
+        .eq("organization_id", organizationId)
+        .eq("service_id", serviceId)
+        .gte("scheduled_date", startDate)
+        .lte("scheduled_date", endDate);
+
+    if (employeeId === "unassigned") {
+        updateQuery = updateQuery.is("employee_id", null);
+    } else if (employeeId) {
+        updateQuery = updateQuery.eq("employee_id", employeeId);
+    }
+
+    const { data, error } = await updateQuery.select("id");
+
+    if (error) {
+        return {
+            status: "error",
+            message: `Não consegui alterar o estado: ${error.message}`,
+        };
+    }
+
+    const updatedCount = data?.length ?? 0;
+
+    revalidatePath("/dashboard/calendar");
+    revalidatePath("/dashboard/calendar/month");
+
+    return {
+        status: "success",
+        message:
+            updatedCount === 0
+                ? "Não encontrei marcações para estes critérios."
+                : `${updatedCount} marcações atualizadas.`,
     };
 }
 

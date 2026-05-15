@@ -3,6 +3,8 @@ import { connection } from "next/server";
 
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
+import { ChangeMonthStatusDialog } from "./change-month-status-dialog";
+import { ClearMonthAppointmentsDialog } from "./clear-month-appointments-dialog";
 import { MonthFilters } from "./month-filters";
 import { MonthlyScheduleDialog } from "./monthly-schedule-dialog";
 
@@ -56,6 +58,20 @@ type Appointment = {
         id: string;
         name: string;
         color: string | null;
+    }>;
+};
+
+type MonthBulkAppointment = {
+    id: string;
+    employee_id: string | null;
+    service_id: string | null;
+    employees: AppointmentRelation<{
+        id: string;
+        name: string;
+    }>;
+    services: AppointmentRelation<{
+        id: string;
+        name: string;
     }>;
 };
 
@@ -314,13 +330,35 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
 
     const { data, error } = await appointmentsQuery;
 
-    if (error) {
+    const { data: monthBulkData, error: monthBulkError } = await supabase
+        .from("appointments")
+        .select(
+            `
+        id,
+        employee_id,
+        service_id,
+        employees (
+          id,
+          name
+        ),
+        services (
+          id,
+          name
+        )
+      `
+        )
+        .gte("scheduled_date", startValue)
+        .lte("scheduled_date", endValue);
+
+    const calendarError = error ?? monthBulkError;
+
+    if (calendarError) {
         return (
             <div className="p-6">
                 <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
                     <h1 className="text-2xl font-semibold">Vista mensal</h1>
                     <p className="text-sm text-destructive">
-                        Erro ao carregar calendário mensal: {error.message}
+                        Erro ao carregar calendário mensal: {calendarError.message}
                     </p>
                 </div>
             </div>
@@ -328,13 +366,40 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
     }
 
     const appointments = (data ?? []) as Appointment[];
+    const monthBulkAppointments = (monthBulkData ?? []) as MonthBulkAppointment[];
     const appointmentsByDate = new Map<string, Appointment[]>();
+    const bulkServicesById = new Map<string, { id: string; name: string }>();
+    const bulkEmployeesById = new Map<string, { id: string; name: string }>();
+    let hasUnassignedAppointments = false;
 
     for (const appointment of appointments) {
         const current = appointmentsByDate.get(appointment.scheduled_date) ?? [];
         current.push(appointment);
         appointmentsByDate.set(appointment.scheduled_date, current);
     }
+
+    for (const appointment of monthBulkAppointments) {
+        const service = firstRelation(appointment.services);
+        const employee = firstRelation(appointment.employees);
+
+        if (service) {
+            bulkServicesById.set(service.id, service);
+        }
+
+        if (employee) {
+            bulkEmployeesById.set(employee.id, employee);
+        } else {
+            hasUnassignedAppointments = true;
+        }
+    }
+
+    const monthBulkServices = Array.from(bulkServicesById.values()).sort((a, b) =>
+        a.name.localeCompare(b.name, "pt-PT", { sensitivity: "base" })
+    );
+    const monthBulkEmployees = Array.from(bulkEmployeesById.values()).sort((a, b) =>
+        a.name.localeCompare(b.name, "pt-PT", { sensitivity: "base" })
+    );
+    const hasMonthAppointments = monthBulkAppointments.length > 0;
 
     return (
         <div className="p-6">
@@ -372,7 +437,7 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                     </div>
                 </header>
 
-                <div>
+                <div className="flex flex-wrap gap-2">
                     <MonthlyScheduleDialog
                         selectedDate={selectedDate}
                         selectedLocationId={selectedLocationId}
@@ -381,6 +446,15 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                         patients={patientRows}
                         services={serviceRows}
                     />
+                    {hasMonthAppointments ? (
+                        <ChangeMonthStatusDialog
+                            selectedDate={selectedDate}
+                            services={monthBulkServices}
+                            employees={monthBulkEmployees}
+                            hasUnassignedAppointments={hasUnassignedAppointments}
+                        />
+                    ) : null}
+                    <ClearMonthAppointmentsDialog selectedDate={selectedDate} />
                 </div>
 
                 <MonthFilters
@@ -441,17 +515,37 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                                             return (
                                                 <div
                                                     key={appointment.id}
-                                                    className="truncate rounded-md border bg-background px-2 py-1 text-xs"
+                                                    className="min-w-0 rounded-md border bg-background px-2 py-1 text-xs"
                                                 >
-                          <span
-                              className="mr-1 inline-block size-2 rounded-full"
-                              style={{
-                                  backgroundColor: statusColor(appointment.status),
-                              }}
-                          />
-                                                    {formatTime(appointment.start_time)} ·{" "}
-                                                    {patient?.name ?? "Utente"} ·{" "}
-                                                    {service?.name ?? "Serviço"}
+                                                    <div className="flex min-w-0 items-center gap-1">
+                                                        <span
+                                                            className="size-2 shrink-0 rounded-full"
+                                                            style={{
+                                                                backgroundColor: statusColor(
+                                                                    appointment.status
+                                                                ),
+                                                            }}
+                                                            aria-hidden="true"
+                                                        />
+                                                        <span className="truncate">
+                                                            {formatTime(appointment.start_time)} ·{" "}
+                                                            {patient?.name ?? "Utente"}
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="mt-1 flex min-w-0 items-center gap-1 text-muted-foreground">
+                                                        <span
+                                                            className="size-2 shrink-0 rounded-full"
+                                                            style={{
+                                                                backgroundColor:
+                                                                    service?.color ?? "#0f766e",
+                                                            }}
+                                                            aria-hidden="true"
+                                                        />
+                                                        <span className="truncate">
+                                                            {service?.name ?? "Serviço"}
+                                                        </span>
+                                                    </div>
                                                 </div>
                                             );
                                         })}
