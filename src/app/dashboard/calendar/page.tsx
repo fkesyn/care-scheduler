@@ -10,6 +10,7 @@ import {
     type AppointmentPatientOption,
     type AppointmentServiceOption,
 } from "./new-appointment-dialog";
+import {redirect} from "next/navigation";
 
 type CalendarPageProps = {
     searchParams: Promise<{
@@ -154,6 +155,10 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
     await connection();
 
     const params = await searchParams;
+
+    if (!params.date) {
+        redirect(`/dashboard/calendar/month?date=${formatDateInput(new Date())}`);
+    }
     const selectedDate =
         params.date && datePattern.test(params.date)
             ? params.date

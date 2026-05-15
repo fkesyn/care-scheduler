@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { MonthFilters } from "./month-filters";
+import { redirect } from "next/navigation";
 
 
 type MonthPageProps = {
@@ -349,7 +350,7 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                     <div className="flex flex-wrap gap-2">
                         <Button asChild size="sm" variant="outline">
                             <Link href={buildMonthHref({ date: addMonths(selectedDate, -1) })}>
-                                Mês anterior
+                                Anterior
                             </Link>
                         </Button>
 
@@ -361,7 +362,7 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
 
                         <Button asChild size="sm" variant="outline">
                             <Link href={buildMonthHref({ date: addMonths(selectedDate, 1) })}>
-                                Mês seguinte
+                                Seguinte
                             </Link>
                         </Button>
 
