@@ -314,6 +314,11 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                                 Dia seguinte
                             </Link>
                         </Button>
+                        <Button asChild size="sm" variant="outline">
+                            <Link href={`/dashboard/calendar/month?date=${selectedDate}`}>
+                                Ver mês
+                            </Link>
+                        </Button>
                     </div>
                 </header>
 
