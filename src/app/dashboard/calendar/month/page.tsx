@@ -3,24 +3,68 @@ import { connection } from "next/server";
 
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
+import { MonthFilters } from "./month-filters";
+
 
 type MonthPageProps = {
     searchParams: Promise<{
         date?: string;
+        locationId?: string;
+        employeeId?: string;
+        patientId?: string;
+        serviceId?: string;
     }>;
+};
+
+type Location = {
+    id: string;
+    name: string;
+};
+
+type Employee = {
+    id: string;
+    name: string;
+};
+
+type PatientOption = {
+    id: string;
+    name: string;
+    location_id: string | null;
+};
+
+type ServiceOption = {
+    id: string;
+    name: string;
 };
 
 type Appointment = {
     id: string;
     scheduled_date: string;
     start_time: string;
-    patients: {
+    patients:
+        | {
+        id: string;
         name: string;
-    } | null;
-    services: {
+        location_id: string | null;
+    }
+        | {
+        id: string;
+        name: string;
+        location_id: string | null;
+    }[]
+        | null;
+    services:
+        | {
+        id: string;
         name: string;
         color: string | null;
-    } | null;
+    }
+        | {
+        id: string;
+        name: string;
+        color: string | null;
+    }[]
+        | null;
 };
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -36,20 +80,6 @@ function formatDateInput(date: Date) {
 function parseDate(dateValue: string) {
     const [year, month, day] = dateValue.split("-").map(Number);
     return new Date(year, month - 1, day);
-}
-
-function getMonthRange(dateValue: string) {
-    const date = parseDate(dateValue);
-
-    const start = new Date(date.getFullYear(), date.getMonth(), 1);
-    const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-
-    return {
-        start,
-        end,
-        startValue: formatDateInput(start),
-        endValue: formatDateInput(end),
-    };
 }
 
 function addMonths(dateValue: string, months: number) {
@@ -73,9 +103,12 @@ function formatTime(timeValue: string) {
 }
 
 function buildMonthDays(selectedDate: string) {
-    const { start, end } = getMonthRange(selectedDate);
+    const date = parseDate(selectedDate);
+    const start = new Date(date.getFullYear(), date.getMonth(), 1);
+    const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
 
     const firstDayOffset = start.getDay() === 0 ? 6 : start.getDay() - 1;
+
     const days: Array<{
         date: Date;
         dateValue: string;
@@ -115,6 +148,7 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
     await connection();
 
     const params = await searchParams;
+
     const selectedDate =
         params.date && datePattern.test(params.date)
             ? params.date
@@ -124,17 +158,126 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
 
     const supabase = await createClient();
 
-    const { data, error } = await supabase
+    const [
+        { data: locations, error: locationsError },
+        { data: employees, error: employeesError },
+        { data: patients, error: patientsError },
+        { data: services, error: servicesError },
+    ] = await Promise.all([
+        supabase.from("locations").select("id, name").order("name"),
+        supabase
+            .from("employees")
+            .select("id, name")
+            .eq("active", true)
+            .order("name"),
+        supabase
+            .from("patients")
+            .select("id, name, location_id")
+            .eq("active", true)
+            .order("name"),
+        supabase
+            .from("services")
+            .select("id, name")
+            .eq("active", true)
+            .order("name"),
+    ]);
+
+    const filterLoadError =
+        locationsError ?? employeesError ?? patientsError ?? servicesError;
+
+    if (filterLoadError) {
+        return (
+            <div className="p-6">
+                <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
+                    <h1 className="text-2xl font-semibold">Vista mensal</h1>
+                    <p className="text-sm text-destructive">
+                        Erro ao carregar filtros: {filterLoadError.message}
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
+    const locationRows = (locations ?? []) as Location[];
+    const employeeRows = (employees ?? []) as Employee[];
+    const patientRows = (patients ?? []) as PatientOption[];
+    const serviceRows = (services ?? []) as ServiceOption[];
+
+    const selectedLocationId =
+        params.locationId &&
+        locationRows.some((location) => location.id === params.locationId)
+            ? params.locationId
+            : locationRows[0]?.id ?? "";
+
+    const selectedEmployeeId =
+        params.employeeId &&
+        employeeRows.some((employee) => employee.id === params.employeeId)
+            ? params.employeeId
+            : "";
+
+    const selectedPatientId =
+        params.patientId &&
+        patientRows.some((patient) => patient.id === params.patientId)
+            ? params.patientId
+            : "";
+
+    const selectedServiceId =
+        params.serviceId &&
+        serviceRows.some((service) => service.id === params.serviceId)
+            ? params.serviceId
+            : "";
+
+    function buildMonthHref(overrides: {
+        date?: string;
+        locationId?: string;
+        employeeId?: string;
+        patientId?: string;
+        serviceId?: string;
+    }) {
+        const query = new URLSearchParams();
+
+        query.set("date", overrides.date ?? selectedDate);
+
+        const locationId = overrides.locationId ?? selectedLocationId;
+        const employeeId = overrides.employeeId ?? selectedEmployeeId;
+        const patientId = overrides.patientId ?? selectedPatientId;
+        const serviceId = overrides.serviceId ?? selectedServiceId;
+
+        if (locationId) query.set("locationId", locationId);
+        if (employeeId) query.set("employeeId", employeeId);
+        if (patientId) query.set("patientId", patientId);
+        if (serviceId) query.set("serviceId", serviceId);
+
+        return `/dashboard/calendar/month?${query.toString()}`;
+    }
+
+    function buildDayHref(dateValue: string) {
+        const query = new URLSearchParams();
+
+        query.set("date", dateValue);
+
+        if (selectedLocationId) query.set("locationId", selectedLocationId);
+        if (selectedEmployeeId) query.set("employeeId", selectedEmployeeId);
+        if (selectedPatientId) query.set("patientId", selectedPatientId);
+        if (selectedServiceId) query.set("serviceId", selectedServiceId);
+
+        return `/dashboard/calendar?${query.toString()}`;
+    }
+
+    let appointmentsQuery = supabase
         .from("appointments")
         .select(
             `
         id,
         scheduled_date,
         start_time,
-        patients (
-          name
+        patients!inner (
+          id,
+          name,
+          location_id
         ),
         services (
+          id,
           name,
           color
         )
@@ -144,6 +287,27 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
         .lte("scheduled_date", endValue)
         .order("scheduled_date")
         .order("start_time");
+
+    if (selectedLocationId) {
+        appointmentsQuery = appointmentsQuery.eq(
+            "patients.location_id",
+            selectedLocationId
+        );
+    }
+
+    if (selectedEmployeeId) {
+        appointmentsQuery = appointmentsQuery.eq("employee_id", selectedEmployeeId);
+    }
+
+    if (selectedPatientId) {
+        appointmentsQuery = appointmentsQuery.eq("patient_id", selectedPatientId);
+    }
+
+    if (selectedServiceId) {
+        appointmentsQuery = appointmentsQuery.eq("service_id", selectedServiceId);
+    }
+
+    const { data, error } = await appointmentsQuery;
 
     if (error) {
         return (
@@ -159,7 +323,6 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
     }
 
     const appointments = (data ?? []) as Appointment[];
-
     const appointmentsByDate = new Map<string, Appointment[]>();
 
     for (const appointment of appointments) {
@@ -167,6 +330,10 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
         current.push(appointment);
         appointmentsByDate.set(appointment.scheduled_date, current);
     }
+
+    const filteredPatients = patientRows.filter(
+        (patient) => !selectedLocationId || patient.location_id === selectedLocationId
+    );
 
     return (
         <div className="p-6">
@@ -181,30 +348,40 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
 
                     <div className="flex flex-wrap gap-2">
                         <Button asChild size="sm" variant="outline">
-                            <Link href={`/dashboard/calendar/month?date=${addMonths(selectedDate, -1)}`}>
+                            <Link href={buildMonthHref({ date: addMonths(selectedDate, -1) })}>
                                 Mês anterior
                             </Link>
                         </Button>
 
                         <Button asChild size="sm" variant="secondary">
-                            <Link href={`/dashboard/calendar/month?date=${formatDateInput(new Date())}`}>
+                            <Link href={buildMonthHref({ date: formatDateInput(new Date()) })}>
                                 Este mês
                             </Link>
                         </Button>
 
                         <Button asChild size="sm" variant="outline">
-                            <Link href={`/dashboard/calendar/month?date=${addMonths(selectedDate, 1)}`}>
+                            <Link href={buildMonthHref({ date: addMonths(selectedDate, 1) })}>
                                 Mês seguinte
                             </Link>
                         </Button>
 
                         <Button asChild size="sm">
-                            <Link href={`/dashboard/calendar?date=${selectedDate}`}>
-                                Ver dia
-                            </Link>
+                            <Link href={buildDayHref(selectedDate)}>Ver dia</Link>
                         </Button>
                     </div>
                 </header>
+
+                <MonthFilters
+                    selectedDate={selectedDate}
+                    selectedLocationId={selectedLocationId}
+                    selectedEmployeeId={selectedEmployeeId}
+                    selectedPatientId={selectedPatientId}
+                    selectedServiceId={selectedServiceId}
+                    locations={locationRows}
+                    employees={employeeRows}
+                    patients={patientRows}
+                    services={serviceRows}
+                />
 
                 <section className="overflow-hidden rounded-lg border bg-card shadow-xs">
                     <div className="grid grid-cols-7 border-b bg-muted/50 text-center text-xs font-medium text-muted-foreground">
@@ -223,10 +400,12 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                             return (
                                 <Link
                                     key={day.dateValue}
-                                    href={`/dashboard/calendar?date=${day.dateValue}`}
+                                    href={buildDayHref(day.dateValue)}
                                     className={[
                                         "min-h-32 border-b border-r p-2 transition-colors hover:bg-muted/50",
-                                        !day.isCurrentMonth ? "bg-muted/20 text-muted-foreground" : "",
+                                        !day.isCurrentMonth
+                                            ? "bg-muted/20 text-muted-foreground"
+                                            : "",
                                         isToday ? "bg-primary/5" : "",
                                     ].join(" ")}
                                 >
