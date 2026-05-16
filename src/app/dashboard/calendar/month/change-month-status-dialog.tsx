@@ -19,6 +19,7 @@ import {
     DialogTrigger,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { useActionDialog } from "@/lib/use-action-dialog";
 import { cn } from "@/lib/utils";
 
@@ -48,7 +49,14 @@ function SubmitButton({ disabled }: { disabled: boolean }) {
 
     return (
         <Button type="submit" disabled={pending || disabled}>
-            {pending ? "A alterar..." : "Alterar estado"}
+            {pending ? (
+                <>
+                    <Spinner />
+                    A alterar...
+                </>
+            ) : (
+                "Alterar estado"
+            )}
         </Button>
     );
 }

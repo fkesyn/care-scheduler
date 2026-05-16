@@ -5,12 +5,14 @@ import {
     CalendarDaysIcon,
     ClipboardListIcon,
     MapPinIcon,
+    type LucideIcon,
     UsersRoundIcon,
 } from "lucide-react";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 
 const items = [
     {
@@ -34,7 +36,8 @@ const items = [
         icon: ClipboardListIcon,
     },
     {
-        href: "/dashboard/calendar",
+        href: "/dashboard/calendar/month",
+        activeRoot: "/dashboard/calendar",
         label: "Calendário",
         icon: CalendarDaysIcon,
     },
@@ -46,8 +49,9 @@ export function DashboardNav() {
     return (
         <nav className="flex flex-wrap gap-2" aria-label="Dashboard">
             {items.map((item) => {
-                const Icon = item.icon;
-                const isActive = pathname === item.href;
+                const activeRoot = item.activeRoot ?? item.href;
+                const isActive =
+                    pathname === activeRoot || pathname.startsWith(`${activeRoot}/`);
 
                 return (
                     <Button
@@ -56,13 +60,36 @@ export function DashboardNav() {
                         variant={isActive ? "secondary" : "ghost"}
                         size="sm"
                     >
-                        <Link href={item.href}>
-                            <Icon />
-                            {item.label}
+                        <Link
+                            href={item.href}
+                            prefetch={false}
+                            aria-current={isActive ? "page" : undefined}
+                        >
+                            <DashboardNavItemContent
+                                icon={item.icon}
+                                label={item.label}
+                            />
                         </Link>
                     </Button>
                 );
             })}
         </nav>
+    );
+}
+
+function DashboardNavItemContent({
+    icon: Icon,
+    label,
+}: {
+    icon: LucideIcon;
+    label: string;
+}) {
+    const { pending } = useLinkStatus();
+
+    return (
+        <>
+            {pending ? <Spinner /> : <Icon />}
+            {label}
+        </>
     );
 }

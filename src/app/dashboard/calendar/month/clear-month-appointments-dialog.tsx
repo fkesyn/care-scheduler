@@ -18,6 +18,7 @@ import {
     DialogTitle,
     DialogTrigger,
 } from "@/components/ui/dialog";
+import { Spinner } from "@/components/ui/spinner";
 import { useActionDialog } from "@/lib/use-action-dialog";
 import { cn } from "@/lib/utils";
 
@@ -44,7 +45,14 @@ function DeleteButton() {
 
     return (
         <Button type="submit" variant="destructive" disabled={pending}>
-            {pending ? "A limpar..." : "Sim, limpar mês"}
+            {pending ? (
+                <>
+                    <Spinner />
+                    A limpar...
+                </>
+            ) : (
+                "Sim, limpar mês"
+            )}
         </Button>
     );
 }

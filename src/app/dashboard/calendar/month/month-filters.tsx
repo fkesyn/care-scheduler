@@ -1,6 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { Spinner } from "@/components/ui/spinner";
+import { useMonthNavigation } from "./month-navigation";
 
 type Location = {
     id: string;
@@ -44,9 +45,9 @@ export function MonthFilters({
                                  locations,
                                  employees,
                                  patients,
-                                 services,
-                             }: MonthFiltersProps) {
-    const router = useRouter();
+                             services,
+                         }: MonthFiltersProps) {
+    const { navigate, pending } = useMonthNavigation();
 
     function updateFilters(overrides: {
         locationId?: string;
@@ -68,7 +69,7 @@ export function MonthFilters({
         if (patientId) query.set("patientId", patientId);
         if (serviceId) query.set("serviceId", serviceId);
 
-        router.push(`/dashboard/calendar/month?${query.toString()}`);
+        navigate(`/dashboard/calendar/month?${query.toString()}`);
     }
 
     const filteredPatients = patients.filter(
@@ -86,6 +87,7 @@ export function MonthFilters({
                         id="location-filter"
                         value={selectedLocationId}
                         className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+                        disabled={pending}
                         onChange={(event) => {
                             updateFilters({
                                 locationId: event.target.value,
@@ -109,6 +111,7 @@ export function MonthFilters({
                         id="employee-filter"
                         value={selectedEmployeeId}
                         className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+                        disabled={pending}
                         onChange={(event) => {
                             updateFilters({
                                 employeeId: event.target.value,
@@ -132,6 +135,7 @@ export function MonthFilters({
                         id="patient-filter"
                         value={selectedPatientId}
                         className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+                        disabled={pending}
                         onChange={(event) => {
                             updateFilters({
                                 patientId: event.target.value,
@@ -155,6 +159,7 @@ export function MonthFilters({
                         id="service-filter"
                         value={selectedServiceId}
                         className="h-9 rounded-md border border-input bg-background px-2.5 text-sm"
+                        disabled={pending}
                         onChange={(event) => {
                             updateFilters({
                                 serviceId: event.target.value,
@@ -170,6 +175,13 @@ export function MonthFilters({
                     </select>
                 </div>
             </div>
+
+            {pending ? (
+                <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+                    <Spinner />
+                    A atualizar filtros...
+                </div>
+            ) : null}
         </section>
     );
 }

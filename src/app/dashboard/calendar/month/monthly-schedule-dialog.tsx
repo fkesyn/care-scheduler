@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { useActionDialog } from "@/lib/use-action-dialog";
 import { cn } from "@/lib/utils";
 
@@ -87,7 +88,14 @@ function SubmitButton({ disabled }: { disabled: boolean }) {
 
     return (
         <Button type="submit" disabled={pending || disabled}>
-            {pending ? "A criar..." : "Criar agendamento mensal"}
+            {pending ? (
+                <>
+                    <Spinner />
+                    A criar...
+                </>
+            ) : (
+                "Criar agendamento mensal"
+            )}
         </Button>
     );
 }

@@ -6,6 +6,10 @@ import { createClient } from "@/lib/supabase/server";
 import { ChangeMonthStatusDialog } from "./change-month-status-dialog";
 import { ClearMonthAppointmentsDialog } from "./clear-month-appointments-dialog";
 import { MonthFilters } from "./month-filters";
+import {
+    MonthNavigationButton,
+    MonthNavigationProvider,
+} from "./month-navigation";
 import { MonthlyScheduleDialog } from "./monthly-schedule-dialog";
 
 type MonthPageProps = {
@@ -402,7 +406,8 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
     const hasMonthAppointments = monthBulkAppointments.length > 0;
 
     return (
-        <div className="p-6">
+        <MonthNavigationProvider currentHref={buildMonthHref({})}>
+            <div className="p-6">
             <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
                 <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div>
@@ -413,23 +418,29 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                        <Button asChild size="sm" variant="outline">
-                            <Link href={buildMonthHref({ date: addMonths(selectedDate, -1) })}>
-                                Anterior
-                            </Link>
-                        </Button>
+                        <MonthNavigationButton
+                            href={buildMonthHref({ date: addMonths(selectedDate, -1) })}
+                            size="sm"
+                            variant="outline"
+                        >
+                            Anterior
+                        </MonthNavigationButton>
 
-                        <Button asChild size="sm" variant="secondary">
-                            <Link href={buildMonthHref({ date: formatDateInput(new Date()) })}>
-                                Este mês
-                            </Link>
-                        </Button>
+                        <MonthNavigationButton
+                            href={buildMonthHref({ date: formatDateInput(new Date()) })}
+                            size="sm"
+                            variant="secondary"
+                        >
+                            Este mês
+                        </MonthNavigationButton>
 
-                        <Button asChild size="sm" variant="outline">
-                            <Link href={buildMonthHref({ date: addMonths(selectedDate, 1) })}>
-                                Seguinte
-                            </Link>
-                        </Button>
+                        <MonthNavigationButton
+                            href={buildMonthHref({ date: addMonths(selectedDate, 1) })}
+                            size="sm"
+                            variant="outline"
+                        >
+                            Seguinte
+                        </MonthNavigationButton>
 
                         <Button asChild size="sm">
                             <Link href={buildDayHref(selectedDate)}>Ver dia</Link>
@@ -563,5 +574,6 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                 </section>
             </div>
         </div>
+        </MonthNavigationProvider>
     );
 }
