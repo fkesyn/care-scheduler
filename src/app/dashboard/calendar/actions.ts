@@ -12,7 +12,6 @@ export type CreateAppointmentState = {
         patientId?: string;
         serviceId?: string;
         scheduledDate?: string;
-        startTime?: string;
     };
 };
 
@@ -25,7 +24,6 @@ export type UpdateAppointmentState = {
         patientId?: string;
         serviceId?: string;
         scheduledDate?: string;
-        startTime?: string;
         appointmentStatus?: string;
     };
 };
@@ -61,21 +59,24 @@ export type CreateMonthlyAppointmentsState = {
         month?: string;
         locationId?: string;
         serviceId?: string;
-        startTime?: string;
-        endTime?: string;
         startDay?: string;
         endDay?: string;
+        weekdays?: string;
+        weekdayCapacity?: string;
         patientIds?: string;
         employeeId?: string;
     };
 };
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-const timePattern = /^\d{2}:\d{2}$/;
 const monthPattern = /^\d{4}-\d{2}$/;
 const uuidPattern =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const appointmentStatuses = new Set(["planned", "completed", "canceled"]);
+const validWeekdays = new Set([0, 1, 2, 3, 4, 5, 6]);
+const technicalStartTime = "00:00";
+const technicalStartTimeWithSeconds = "00:00:00";
+const technicalEndTimeWithSeconds = "00:01:00";
 
 type PatientRow = {
     id: string;
@@ -83,15 +84,10 @@ type PatientRow = {
     is_diabetic: boolean | null;
 };
 
-type ExistingAppointmentRow = {
+type ExistingPatientAppointmentRow = {
     scheduled_date: string;
-    start_time: string;
-    end_time: string;
-};
-
-type BusySlot = {
-    start: number;
-    end: number;
+    patient_id: string | null;
+    service_id: string | null;
 };
 
 async function getExistingProfileId(
@@ -111,55 +107,11 @@ async function getExistingProfileId(
     return String(data.id);
 }
 
-function parseTimeToMinutes(timeValue: string) {
-    const [hours, minutes] = timeValue.split(":").map(Number);
-    return hours * 60 + minutes;
-}
-
-function formatMinutesAsTime(minutes: number) {
-    const hours = String(Math.floor(minutes / 60)).padStart(2, "0");
-    const minuteValue = String(minutes % 60).padStart(2, "0");
-
-    return `${hours}:${minuteValue}:00`;
-}
-
 function formatDateValue(year: number, month: number, day: number) {
     return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(
         2,
         "0"
     )}`;
-}
-
-function findAvailableSlot(
-    busySlots: BusySlot[],
-    windowStart: number,
-    windowEnd: number,
-    durationMinutes: number
-) {
-    let candidateStart = windowStart;
-
-    for (const slot of busySlots) {
-        const candidateEnd = candidateStart + durationMinutes;
-
-        if (candidateEnd <= slot.start) {
-            break;
-        }
-
-        if (candidateStart < slot.end && candidateEnd > slot.start) {
-            candidateStart = slot.end;
-        }
-    }
-
-    const candidateEnd = candidateStart + durationMinutes;
-
-    if (candidateEnd > windowEnd) {
-        return null;
-    }
-
-    return {
-        start: candidateStart,
-        end: candidateEnd,
-    };
 }
 
 export async function createAppointment(
@@ -170,7 +122,6 @@ export async function createAppointment(
     const patientId = String(formData.get("patient_id") ?? "").trim();
     const serviceId = String(formData.get("service_id") ?? "").trim();
     const scheduledDate = String(formData.get("scheduled_date") ?? "").trim();
-    const startTime = String(formData.get("start_time") ?? "").trim();
     const notes = String(formData.get("notes") ?? "").trim();
 
     const fieldErrors: CreateAppointmentState["fieldErrors"] = {};
@@ -189,10 +140,6 @@ export async function createAppointment(
 
     if (!datePattern.test(scheduledDate)) {
         fieldErrors.scheduledDate = "Escolhe uma data válida.";
-    }
-
-    if (!timePattern.test(startTime)) {
-        fieldErrors.startTime = "Escolhe uma hora válida.";
     }
 
     if (Object.keys(fieldErrors).length > 0) {
@@ -220,7 +167,7 @@ export async function createAppointment(
         p_patient_id: patientId,
         p_service_id: serviceId,
         p_scheduled_date: scheduledDate,
-        p_start_time: startTime,
+        p_start_time: technicalStartTime,
         p_notes: notes || null,
         p_status: "planned",
     });
@@ -250,7 +197,6 @@ export async function updateAppointmentDetails(
     const patientId = String(formData.get("patient_id") ?? "").trim();
     const serviceId = String(formData.get("service_id") ?? "").trim();
     const scheduledDate = String(formData.get("scheduled_date") ?? "").trim();
-    const startTime = String(formData.get("start_time") ?? "").trim();
     const appointmentStatus = String(formData.get("status") ?? "").trim();
     const notes = String(formData.get("notes") ?? "").trim();
 
@@ -274,10 +220,6 @@ export async function updateAppointmentDetails(
 
     if (!datePattern.test(scheduledDate)) {
         fieldErrors.scheduledDate = "Escolhe uma data válida.";
-    }
-
-    if (!timePattern.test(startTime)) {
-        fieldErrors.startTime = "Escolhe uma hora válida.";
     }
 
     if (!appointmentStatuses.has(appointmentStatus)) {
@@ -314,7 +256,7 @@ export async function updateAppointmentDetails(
                 .maybeSingle(),
             supabase
                 .from("services")
-                .select("id, duration_minutes, measurement_type")
+                .select("id, measurement_type")
                 .eq("id", serviceId)
                 .eq("active", true)
                 .maybeSingle(),
@@ -357,17 +299,6 @@ export async function updateAppointmentDetails(
         };
     }
 
-    const durationMinutes = Number(service.duration_minutes ?? 30);
-    const startMinutes = parseTimeToMinutes(startTime);
-    const endMinutes = startMinutes + durationMinutes;
-
-    if (endMinutes > 24 * 60) {
-        return {
-            status: "error",
-            message: "A marcação não pode terminar no dia seguinte.",
-        };
-    }
-
     const auditProfileId = await getExistingProfileId(supabase, user.id);
 
     const { error } = await supabase
@@ -377,8 +308,8 @@ export async function updateAppointmentDetails(
             patient_id: patientId,
             service_id: serviceId,
             scheduled_date: scheduledDate,
-            start_time: formatMinutesAsTime(startMinutes),
-            end_time: formatMinutesAsTime(endMinutes),
+            start_time: technicalStartTimeWithSeconds,
+            end_time: technicalEndTimeWithSeconds,
             status: appointmentStatus,
             notes: notes || null,
             updated_at: new Date().toISOString(),
@@ -641,10 +572,14 @@ export async function createMonthlyAppointments(
     const locationId = String(formData.get("location_id") ?? "").trim();
     const serviceId = String(formData.get("service_id") ?? "").trim();
     const employeeId = String(formData.get("employee_id") ?? "").trim();
-    const startTime = String(formData.get("start_time") ?? "").trim();
-    const endTime = String(formData.get("end_time") ?? "").trim();
     const startDay = Number(formData.get("start_day") ?? 1);
     const endDay = Number(formData.get("end_day") ?? 31);
+    const selectedWeekdays = new Set(
+        formData
+            .getAll("weekdays")
+            .map((value) => Number(value))
+            .filter((value) => Number.isInteger(value) && validWeekdays.has(value))
+    );
     const useAllPatients = formData.get("all_patients") === "on";
     const patientIds = formData
         .getAll("patient_ids")
@@ -667,14 +602,6 @@ export async function createMonthlyAppointments(
 
     if (employeeId && !uuidPattern.test(employeeId)) {
         fieldErrors.employeeId = "Escolhe um funcionário válido.";
-    }
-
-    if (!timePattern.test(startTime)) {
-        fieldErrors.startTime = "Escolhe uma hora de início válida.";
-    }
-
-    if (!timePattern.test(endTime)) {
-        fieldErrors.endTime = "Escolhe uma hora de fim válida.";
     }
 
     const [year, monthNumber] = month.split("-").map(Number);
@@ -702,13 +629,22 @@ export async function createMonthlyAppointments(
         fieldErrors.patientIds = "Escolhe pelo menos um utente.";
     }
 
-    if (timePattern.test(startTime) && timePattern.test(endTime)) {
-        const windowStart = parseTimeToMinutes(startTime);
-        const windowEnd = parseTimeToMinutes(endTime);
+    if (selectedWeekdays.size === 0) {
+        fieldErrors.weekdays = "Escolhe pelo menos um dia da semana.";
+    }
 
-        if (windowEnd <= windowStart) {
-            fieldErrors.endTime = "A hora de fim tem de ser posterior ao início.";
+    const weekdayCapacityByDay = new Map<number, number>();
+
+    for (const weekday of selectedWeekdays) {
+        const capacity = Number(formData.get(`weekday_capacity_${weekday}`) ?? 1);
+
+        if (!Number.isInteger(capacity) || capacity < 1 || capacity > 50) {
+            fieldErrors.weekdayCapacity =
+                "Cada dia selecionado tem de permitir entre 1 e 50 utentes.";
+            break;
         }
+
+        weekdayCapacityByDay.set(weekday, capacity);
     }
 
     if (Object.keys(fieldErrors).length > 0) {
@@ -752,7 +688,7 @@ export async function createMonthlyAppointments(
                 .maybeSingle(),
             supabase
                 .from("services")
-                .select("id, duration_minutes, measurement_type")
+                .select("id, measurement_type")
                 .eq("id", serviceId)
                 .eq("active", true)
                 .maybeSingle(),
@@ -784,17 +720,6 @@ export async function createMonthlyAppointments(
         return {
             status: "error",
             message: "O funcionário escolhido já não está disponível.",
-        };
-    }
-
-    const durationMinutes = Number(service.duration_minutes ?? 30);
-    const windowStart = parseTimeToMinutes(startTime);
-    const windowEnd = parseTimeToMinutes(endTime);
-
-    if (durationMinutes <= 0 || windowEnd - windowStart < durationMinutes) {
-        return {
-            status: "error",
-            message: "O intervalo horário não chega para a duração do serviço.",
         };
     }
 
@@ -850,43 +775,24 @@ export async function createMonthlyAppointments(
     const startDate = formatDateValue(year, monthNumber, startDay);
     const endDate = formatDateValue(year, monthNumber, endDay);
 
-    let appointmentsQuery = supabase
-        .from("appointments")
-        .select("scheduled_date, start_time, end_time")
-        .gte("scheduled_date", startDate)
-        .lte("scheduled_date", endDate)
-        .neq("status", "canceled")
-        .order("scheduled_date")
-        .order("start_time");
+    const { data: existingPatientAppointments, error: existingPatientAppointmentsError } =
+        await supabase
+            .from("appointments")
+            .select("scheduled_date, patient_id, service_id")
+            .in(
+                "patient_id",
+                patientRows.map((patient) => patient.id)
+            )
+            .gte("scheduled_date", startDate)
+            .lte("scheduled_date", endDate)
+            .neq("status", "canceled")
+            .order("scheduled_date");
 
-    if (employeeId) {
-        appointmentsQuery = appointmentsQuery.eq("employee_id", employeeId);
-    }
-
-    const { data: existingAppointments, error: existingAppointmentsError } =
-        await appointmentsQuery;
-
-    if (existingAppointmentsError) {
+    if (existingPatientAppointmentsError) {
         return {
             status: "error",
-            message: `Não consegui validar slots livres: ${existingAppointmentsError.message}`,
+            message: `Não consegui validar marcações existentes dos utentes: ${existingPatientAppointmentsError.message}`,
         };
-    }
-
-    const busySlotsByDate = new Map<string, BusySlot[]>();
-
-    for (const appointment of (existingAppointments ??
-        []) as ExistingAppointmentRow[]) {
-        const slots = busySlotsByDate.get(appointment.scheduled_date) ?? [];
-        slots.push({
-            start: parseTimeToMinutes(appointment.start_time.slice(0, 5)),
-            end: parseTimeToMinutes(appointment.end_time.slice(0, 5)),
-        });
-        busySlotsByDate.set(appointment.scheduled_date, slots);
-    }
-
-    for (const slots of busySlotsByDate.values()) {
-        slots.sort((a, b) => a.start - b.start);
     }
 
     const appointmentsToCreate: Array<{
@@ -902,41 +808,73 @@ export async function createMonthlyAppointments(
         created_by?: string;
     }> = [];
 
-    const days = Array.from(
-        { length: endDay - startDay + 1 },
-        (_, index) => startDay + index
-    );
+    const allowedDateOrder: string[] = [];
+    const allowedDateSet = new Set<string>();
+    const remainingCapacityByDate = new Map<string, number>();
 
-    if (patientRows.length > days.length) {
+    for (let day = startDay; day <= endDay; day += 1) {
+        const weekday = new Date(year, monthNumber - 1, day).getDay();
+
+        if (!selectedWeekdays.has(weekday)) {
+            continue;
+        }
+
+        const capacity = weekdayCapacityByDay.get(weekday) ?? 1;
+        const dateValue = formatDateValue(year, monthNumber, day);
+
+        allowedDateOrder.push(dateValue);
+        allowedDateSet.add(dateValue);
+        remainingCapacityByDate.set(dateValue, capacity);
+    }
+
+    if (allowedDateOrder.length === 0) {
         return {
             status: "error",
-            message: `Selecionaste ${patientRows.length} utentes, mas só há ${days.length} dias no intervalo escolhido. Nada foi criado.`,
+            message:
+                "Não há dias disponíveis no intervalo com os dias da semana escolhidos.",
+            fieldErrors: {
+                weekdays: "Escolhe dias que existam no intervalo selecionado.",
+            },
         };
     }
 
-    const auditProfileId = await getExistingProfileId(supabase, user.id);
+    const existingDatesByPatient = new Map<string, Set<string>>();
+    const existingSameServiceByPatient = new Map<string, Set<string>>();
 
-    for (const [index, patient] of patientRows.entries()) {
-        const day = days[index];
-        const dateValue = formatDateValue(year, monthNumber, day);
-        const busySlots = busySlotsByDate.get(dateValue) ?? [];
-        const slot = findAvailableSlot(
-            busySlots,
-            windowStart,
-            windowEnd,
-            durationMinutes
-        );
-
-        if (!slot) {
-            return {
-                status: "error",
-                message: `Não há slot livre para ${patient.name} no dia ${day}. Nada foi criado.`,
-            };
+    for (const appointment of (existingPatientAppointments ??
+        []) as ExistingPatientAppointmentRow[]) {
+        if (!appointment.patient_id) {
+            continue;
         }
 
-        busySlots.push(slot);
-        busySlots.sort((a, b) => a.start - b.start);
-        busySlotsByDate.set(dateValue, busySlots);
+        const existingDates =
+            existingDatesByPatient.get(appointment.patient_id) ?? new Set<string>();
+        existingDates.add(appointment.scheduled_date);
+        existingDatesByPatient.set(appointment.patient_id, existingDates);
+
+        if (appointment.service_id === serviceId) {
+            const sameServiceDates =
+                existingSameServiceByPatient.get(appointment.patient_id) ??
+                new Set<string>();
+            sameServiceDates.add(appointment.scheduled_date);
+            existingSameServiceByPatient.set(
+                appointment.patient_id,
+                sameServiceDates
+            );
+        }
+    }
+
+    const auditProfileId = await getExistingProfileId(supabase, user.id);
+    let skippedDuplicateCount = 0;
+
+    function tryCreateAppointmentForDate(patient: PatientRow, dateValue: string) {
+        const remainingCapacity = remainingCapacityByDate.get(dateValue) ?? 0;
+
+        if (remainingCapacity <= 0) {
+            return false;
+        }
+
+        remainingCapacityByDate.set(dateValue, remainingCapacity - 1);
 
         appointmentsToCreate.push({
             organization_id: organizationId,
@@ -944,12 +882,64 @@ export async function createMonthlyAppointments(
             patient_id: patient.id,
             service_id: serviceId,
             scheduled_date: dateValue,
-            start_time: formatMinutesAsTime(slot.start),
-            end_time: formatMinutesAsTime(slot.end),
+            start_time: technicalStartTimeWithSeconds,
+            end_time: technicalEndTimeWithSeconds,
             status: "planned",
             notes: "Agendamento mensal",
             ...(auditProfileId ? { created_by: auditProfileId } : {}),
         });
+
+        return true;
+    }
+
+    const patientsForFallback: PatientRow[] = [];
+
+    for (const patient of patientRows) {
+        const sameServiceDates = existingSameServiceByPatient.get(patient.id);
+        const alreadyHasSameService = Array.from(sameServiceDates ?? []).some(
+            (dateValue) => allowedDateSet.has(dateValue)
+        );
+
+        if (alreadyHasSameService) {
+            skippedDuplicateCount += 1;
+            continue;
+        }
+
+        const existingDates = Array.from(
+            existingDatesByPatient.get(patient.id) ?? []
+        )
+            .filter((dateValue) => allowedDateSet.has(dateValue))
+            .sort();
+        const grouped = existingDates.some((dateValue) =>
+            tryCreateAppointmentForDate(patient, dateValue)
+        );
+
+        if (!grouped) {
+            patientsForFallback.push(patient);
+        }
+    }
+
+    for (const patient of patientsForFallback) {
+        const scheduled = allowedDateOrder.some((dateValue) =>
+            tryCreateAppointmentForDate(patient, dateValue)
+        );
+
+        if (!scheduled) {
+            return {
+                status: "error",
+                message: `Não há capacidade diária para ${patient.name} nos dias escolhidos. Nada foi criado.`,
+            };
+        }
+    }
+
+    if (appointmentsToCreate.length === 0) {
+        return {
+            status: "success",
+            message:
+                skippedDuplicateCount > 0
+                    ? `${skippedDuplicateCount} marcações já existiam; não criei duplicados.`
+                    : "Não havia marcações novas para criar.",
+        };
     }
 
     const { error: insertError } = await supabase
@@ -968,6 +958,9 @@ export async function createMonthlyAppointments(
 
     return {
         status: "success",
-        message: `${appointmentsToCreate.length} marcações criadas com sucesso.`,
+        message:
+            skippedDuplicateCount > 0
+                ? `${appointmentsToCreate.length} marcações criadas com sucesso. ${skippedDuplicateCount} já existiam e foram ignoradas.`
+                : `${appointmentsToCreate.length} marcações criadas com sucesso.`,
     };
 }

@@ -37,8 +37,6 @@ export type AppointmentDetails = {
     patientId: string | null;
     serviceId: string | null;
     scheduledDate: string;
-    startTime: string;
-    timeLabel: string;
     status: string;
     notes: string | null;
     color: string;
@@ -123,9 +121,7 @@ function serviceLabel(service: AppointmentServiceOption) {
               ? "glicémia"
               : null;
 
-    return `${service.name} · ${service.durationMinutes} min${
-        suffix ? ` · ${suffix}` : ""
-    }`;
+    return `${service.name}${suffix ? ` · ${suffix}` : ""}`;
 }
 
 function roleLabel(role: string) {
@@ -195,7 +191,6 @@ export function AppointmentDetailsDialog({
         appointment.patientId ?? "",
         appointment.serviceId ?? "",
         appointment.scheduledDate,
-        appointment.startTime,
         appointment.status,
         appointment.notes ?? "",
     ].join("-");
@@ -205,19 +200,15 @@ export function AppointmentDetailsDialog({
             <DialogTrigger asChild>
                 <button
                     type="button"
-                    className="grid w-full gap-4 p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:grid-cols-[7rem_1fr_auto] sm:items-start"
+                    className="grid w-full gap-4 p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:grid-cols-[1fr_auto] sm:items-start"
                 >
-                    <div className="flex items-center gap-2 font-medium">
-                        <span
-                            className="size-3 rounded-full"
-                            style={{ backgroundColor: statusColor(appointment.status) }}
-                            aria-hidden="true"
-                        />
-                        <span>{appointment.timeLabel}</span>
-                    </div>
-
                     <div className="grid gap-1">
                         <div className="flex flex-wrap items-center gap-2">
+                            <span
+                                className="size-3 rounded-full"
+                                style={{ backgroundColor: statusColor(appointment.status) }}
+                                aria-hidden="true"
+                            />
                             <h2 className="font-medium">{appointment.patientName}</h2>
                             {appointment.patientRoom ? (
                                 <Badge variant="outline">Quarto {appointment.patientRoom}</Badge>
@@ -253,7 +244,7 @@ export function AppointmentDetailsDialog({
                 <DialogHeader>
                     <DialogTitle>{appointment.patientName}</DialogTitle>
                     <DialogDescription>
-                        {appointment.timeLabel} · {appointment.serviceName}
+                        {appointment.serviceName}
                     </DialogDescription>
                 </DialogHeader>
 
@@ -292,7 +283,6 @@ export function AppointmentDetailsDialog({
 
                             <div className="grid gap-3 rounded-md border p-3 text-sm">
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <Badge variant="outline">{appointment.timeLabel}</Badge>
                                     <Badge variant="outline">{appointment.serviceName}</Badge>
                                     {appointment.locationName ? (
                                         <Badge variant="outline">{appointment.locationName}</Badge>
@@ -458,64 +448,33 @@ export function AppointmentDetailsDialog({
                                 ) : null}
                             </div>
 
-                            <div className="grid gap-4 sm:grid-cols-2">
-                                <div className="grid gap-2">
-                                    <Label htmlFor={`appointment-date-${appointment.id}`}>
-                                        Data
-                                    </Label>
-                                    <Input
-                                        id={`appointment-date-${appointment.id}`}
-                                        name="scheduled_date"
-                                        type="date"
-                                        defaultValue={appointment.scheduledDate}
-                                        aria-describedby={
-                                            visibleState.fieldErrors?.scheduledDate
-                                                ? `appointment-date-error-${appointment.id}`
-                                                : undefined
-                                        }
-                                        aria-invalid={Boolean(
-                                            visibleState.fieldErrors?.scheduledDate
-                                        )}
-                                        required
-                                    />
-                                    {visibleState.fieldErrors?.scheduledDate ? (
-                                        <p
-                                            id={`appointment-date-error-${appointment.id}`}
-                                            className="text-sm text-destructive"
-                                        >
-                                            {visibleState.fieldErrors.scheduledDate}
-                                        </p>
-                                    ) : null}
-                                </div>
-
-                                <div className="grid gap-2">
-                                    <Label htmlFor={`appointment-start-${appointment.id}`}>
-                                        Hora
-                                    </Label>
-                                    <Input
-                                        id={`appointment-start-${appointment.id}`}
-                                        name="start_time"
-                                        type="time"
-                                        defaultValue={appointment.startTime}
-                                        aria-describedby={
-                                            visibleState.fieldErrors?.startTime
-                                                ? `appointment-start-error-${appointment.id}`
-                                                : undefined
-                                        }
-                                        aria-invalid={Boolean(
-                                            visibleState.fieldErrors?.startTime
-                                        )}
-                                        required
-                                    />
-                                    {visibleState.fieldErrors?.startTime ? (
-                                        <p
-                                            id={`appointment-start-error-${appointment.id}`}
-                                            className="text-sm text-destructive"
-                                        >
-                                            {visibleState.fieldErrors.startTime}
-                                        </p>
-                                    ) : null}
-                                </div>
+                            <div className="grid gap-2">
+                                <Label htmlFor={`appointment-date-${appointment.id}`}>
+                                    Data
+                                </Label>
+                                <Input
+                                    id={`appointment-date-${appointment.id}`}
+                                    name="scheduled_date"
+                                    type="date"
+                                    defaultValue={appointment.scheduledDate}
+                                    aria-describedby={
+                                        visibleState.fieldErrors?.scheduledDate
+                                            ? `appointment-date-error-${appointment.id}`
+                                            : undefined
+                                    }
+                                    aria-invalid={Boolean(
+                                        visibleState.fieldErrors?.scheduledDate
+                                    )}
+                                    required
+                                />
+                                {visibleState.fieldErrors?.scheduledDate ? (
+                                    <p
+                                        id={`appointment-date-error-${appointment.id}`}
+                                        className="text-sm text-destructive"
+                                    >
+                                        {visibleState.fieldErrors.scheduledDate}
+                                    </p>
+                                ) : null}
                             </div>
 
                             <div className="grid gap-2">

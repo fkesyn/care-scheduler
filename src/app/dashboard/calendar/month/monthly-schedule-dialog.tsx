@@ -1,7 +1,7 @@
 "use client";
 
 import { CalendarPlusIcon, ChevronDownIcon } from "lucide-react";
-import { useActionState, useMemo, useState } from "react";
+import { Fragment, useActionState, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import {
@@ -44,7 +44,6 @@ type PatientOption = {
 type ServiceOption = {
     id: string;
     name: string;
-    duration_minutes: number | null;
     measurement_type: string | null;
 };
 
@@ -61,6 +60,21 @@ const initialState: CreateMonthlyAppointmentsState = {
     status: "idle",
 };
 
+const weekdayOptions = [
+    { value: 1, label: "Segunda-feira", shortLabel: "Seg" },
+    { value: 2, label: "Terça-feira", shortLabel: "Ter" },
+    { value: 3, label: "Quarta-feira", shortLabel: "Qua" },
+    { value: 4, label: "Quinta-feira", shortLabel: "Qui" },
+    { value: 5, label: "Sexta-feira", shortLabel: "Sex" },
+    { value: 6, label: "Sábado", shortLabel: "Sáb" },
+    { value: 0, label: "Domingo", shortLabel: "Dom" },
+];
+
+const weekdayValues = weekdayOptions.map((option) => option.value);
+const weekdayCapacityDefaults = Object.fromEntries(
+    weekdayOptions.map((option) => [option.value, "1"])
+) as Record<number, string>;
+
 function daysInMonth(monthValue: string) {
     const [year, month] = monthValue.split("-").map(Number);
 
@@ -72,7 +86,6 @@ function daysInMonth(monthValue: string) {
 }
 
 function serviceLabel(service: ServiceOption) {
-    const duration = service.duration_minutes ?? 30;
     const suffix =
         service.measurement_type === "blood_pressure"
             ? "TA"
@@ -80,7 +93,36 @@ function serviceLabel(service: ServiceOption) {
               ? "glicémia"
               : null;
 
-    return `${service.name} · ${duration} min${suffix ? ` · ${suffix}` : ""}`;
+    return `${service.name}${suffix ? ` · ${suffix}` : ""}`;
+}
+
+function normalizeText(value: string) {
+    return value
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase();
+}
+
+function isNailCareService(service: ServiceOption | undefined) {
+    return service ? normalizeText(service.name).includes("unha") : false;
+}
+
+function patientIdsForService(
+    patientOptions: PatientOption[],
+    locationId: string,
+    service: ServiceOption | undefined
+) {
+    const shouldSelectDiabeticPatients = isNailCareService(service);
+
+    return new Set(
+        patientOptions
+            .filter((patient) => patient.location_id === locationId)
+            .filter(
+                (patient) =>
+                    !shouldSelectDiabeticPatients || Boolean(patient.is_diabetic)
+            )
+            .map((patient) => patient.id)
+    );
 }
 
 function SubmitButton({ disabled }: { disabled: boolean }) {
@@ -110,6 +152,7 @@ export function MonthlyScheduleDialog({
 }: MonthlyScheduleDialogProps) {
     const defaultMonth = selectedDate.slice(0, 7);
     const defaultLocationId = selectedLocationId || locations[0]?.id || "";
+    const defaultServiceId = services[0]?.id ?? "";
     const [state, formAction] = useActionState(
         createMonthlyAppointments,
         initialState
@@ -119,16 +162,26 @@ export function MonthlyScheduleDialog({
 
     const [monthValue, setMonthValue] = useState(defaultMonth);
     const [locationId, setLocationId] = useState(defaultLocationId);
+    const [serviceId, setServiceId] = useState(defaultServiceId);
     const [startDay, setStartDay] = useState("1");
     const [endDay, setEndDay] = useState(String(daysInMonth(defaultMonth)));
+    const [weekdaysOpen, setWeekdaysOpen] = useState(false);
+    const [selectedWeekdays, setSelectedWeekdays] = useState<Set<number>>(
+        () => new Set(weekdayValues)
+    );
+    const [weekdayCapacities, setWeekdayCapacities] = useState<
+        Record<number, string>
+    >(weekdayCapacityDefaults);
     const [patientsOpen, setPatientsOpen] = useState(false);
-    const [allPatients, setAllPatients] = useState(true);
+    const [allPatients, setAllPatients] = useState(
+        () => !isNailCareService(services.find((service) => service.id === defaultServiceId))
+    );
     const [selectedPatientIds, setSelectedPatientIds] = useState<Set<string>>(
         () =>
-            new Set(
-                patients
-                    .filter((patient) => patient.location_id === defaultLocationId)
-                    .map((patient) => patient.id)
+            patientIdsForService(
+                patients,
+                defaultLocationId,
+                services.find((service) => service.id === defaultServiceId)
             )
     );
 
@@ -154,7 +207,38 @@ export function MonthlyScheduleDialog({
         );
     }, [allPatients, filteredPatients, selectedPatientIds]);
 
+    const selectedService = services.find((service) => service.id === serviceId);
+    const isNailCareSelected = isNailCareService(selectedService);
     const selectedCount = visibleSelectedPatientIds.size;
+    const selectedPatientsAreDiabetic = filteredPatients
+        .filter((patient) => visibleSelectedPatientIds.has(patient.id))
+        .every((patient) => Boolean(patient.is_diabetic));
+    const selectedWeekdayOptions = weekdayOptions.filter((option) =>
+        selectedWeekdays.has(option.value)
+    );
+    const selectedCapacities = selectedWeekdayOptions.map((option) =>
+        Number(weekdayCapacities[option.value] || 1)
+    );
+    const isWeekdaysOnly =
+        selectedWeekdays.size === 5 &&
+        [1, 2, 3, 4, 5].every((weekday) => selectedWeekdays.has(weekday));
+    const weekdayLabel =
+        selectedWeekdays.size === 7
+            ? "Todos os dias"
+            : isWeekdaysOnly
+              ? "Dias úteis"
+              : selectedWeekdays.size === 0
+                ? "Nenhum dia selecionado"
+                : selectedWeekdayOptions
+                      .map((option) => option.shortLabel)
+                      .join(", ");
+    const weekdayCapacityLabel =
+        selectedCapacities.length > 0 &&
+        selectedCapacities.every((capacity) => capacity === selectedCapacities[0])
+            ? `${selectedCapacities[0]} utente${
+                  selectedCapacities[0] === 1 ? "" : "s"
+              }/dia`
+            : "capacidade personalizada";
     const isDisabled =
         locations.length === 0 || services.length === 0 || filteredPatients.length === 0;
 
@@ -167,14 +251,27 @@ export function MonthlyScheduleDialog({
     }
 
     function handleLocationChange(nextLocationId: string) {
-        const ids = new Set(
-            patients
-                .filter((patient) => patient.location_id === nextLocationId)
-                .map((patient) => patient.id)
+        const selectedServiceForLocation = services.find(
+            (service) => service.id === serviceId
+        );
+        const ids = patientIdsForService(
+            patients,
+            nextLocationId,
+            selectedServiceForLocation
         );
 
         setLocationId(nextLocationId);
-        setAllPatients(true);
+        setAllPatients(!isNailCareService(selectedServiceForLocation));
+        setSelectedPatientIds(ids);
+        setPatientsOpen(false);
+    }
+
+    function handleServiceChange(nextServiceId: string) {
+        const nextService = services.find((service) => service.id === nextServiceId);
+        const ids = patientIdsForService(patients, locationId, nextService);
+
+        setServiceId(nextServiceId);
+        setAllPatients(!isNailCareService(nextService));
         setSelectedPatientIds(ids);
         setPatientsOpen(false);
     }
@@ -205,6 +302,31 @@ export function MonthlyScheduleDialog({
         );
     }
 
+    function toggleWeekday(weekday: number, checked: boolean) {
+        setSelectedWeekdays((current) => {
+            const next = new Set(current);
+
+            if (checked) {
+                next.add(weekday);
+            } else {
+                next.delete(weekday);
+            }
+
+            return next;
+        });
+    }
+
+    function setWeekdayPreset(weekdays: number[]) {
+        setSelectedWeekdays(new Set(weekdays));
+    }
+
+    function updateWeekdayCapacity(weekday: number, capacity: string) {
+        setWeekdayCapacities((current) => ({
+            ...current,
+            [weekday]: capacity,
+        }));
+    }
+
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
@@ -217,7 +339,8 @@ export function MonthlyScheduleDialog({
                 <DialogHeader>
                     <DialogTitle>Agendamento mensal</DialogTitle>
                     <DialogDescription>
-                        Cria marcações em lote, um utente por dia, por ordem alfabética.
+                        Cria marcações em lote, por ordem alfabética, respeitando os
+                        dias e a capacidade diária escolhida.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -330,6 +453,133 @@ export function MonthlyScheduleDialog({
                             </div>
                         </div>
 
+                        <div className="relative grid gap-2">
+                            <Label>Dias da semana</Label>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="justify-between"
+                                onClick={() => {
+                                    setWeekdaysOpen((current) => !current);
+                                    setPatientsOpen(false);
+                                }}
+                            >
+                                <span className="truncate">
+                                    {weekdayLabel} · {weekdayCapacityLabel}
+                                </span>
+                                <ChevronDownIcon />
+                            </Button>
+
+                            {selectedWeekdayOptions.map((option) => (
+                                <Fragment key={option.value}>
+                                    <input
+                                        type="hidden"
+                                        name="weekdays"
+                                        value={option.value}
+                                    />
+                                    <input
+                                        type="hidden"
+                                        name={`weekday_capacity_${option.value}`}
+                                        value={weekdayCapacities[option.value] ?? "1"}
+                                    />
+                                </Fragment>
+                            ))}
+
+                            {weekdaysOpen ? (
+                                <div className="absolute top-full z-30 mt-2 grid max-h-80 w-full gap-3 overflow-y-auto rounded-md border bg-popover p-3 text-sm shadow-md">
+                                    <div className="flex flex-wrap gap-2">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="xs"
+                                            onClick={() =>
+                                                setWeekdayPreset(weekdayValues)
+                                            }
+                                        >
+                                            Todos
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="xs"
+                                            onClick={() =>
+                                                setWeekdayPreset([1, 2, 3, 4, 5])
+                                            }
+                                        >
+                                            Dias úteis
+                                        </Button>
+                                    </div>
+
+                                    <div className="h-px bg-border" />
+
+                                    {weekdayOptions.map((option) => {
+                                        const checked = selectedWeekdays.has(
+                                            option.value
+                                        );
+
+                                        return (
+                                            <div
+                                                key={option.value}
+                                                className="grid grid-cols-[minmax(0,1fr)_8rem] items-center gap-3 rounded-md px-2 py-1.5 hover:bg-muted"
+                                            >
+                                                <Label className="flex min-w-0 items-center gap-2">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={checked}
+                                                        onChange={(event) =>
+                                                            toggleWeekday(
+                                                                option.value,
+                                                                event.target.checked
+                                                            )
+                                                        }
+                                                        className="size-4 rounded border-input accent-foreground"
+                                                    />
+                                                    <span className="truncate">
+                                                        {option.label}
+                                                    </span>
+                                                </Label>
+                                                <div className="flex items-center gap-2">
+                                                    <Input
+                                                        type="number"
+                                                        min={1}
+                                                        max={50}
+                                                        value={
+                                                            weekdayCapacities[
+                                                                option.value
+                                                            ] ?? "1"
+                                                        }
+                                                        disabled={!checked}
+                                                        onChange={(event) =>
+                                                            updateWeekdayCapacity(
+                                                                option.value,
+                                                                event.target.value
+                                                            )
+                                                        }
+                                                        className="h-8 w-16"
+                                                        aria-label={`Utentes por ${option.label}`}
+                                                    />
+                                                    <span className="text-xs text-muted-foreground">
+                                                        /dia
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : null}
+
+                            {visibleState.fieldErrors?.weekdays ? (
+                                <p className="text-sm text-destructive">
+                                    {visibleState.fieldErrors.weekdays}
+                                </p>
+                            ) : null}
+                            {visibleState.fieldErrors?.weekdayCapacity ? (
+                                <p className="text-sm text-destructive">
+                                    {visibleState.fieldErrors.weekdayCapacity}
+                                </p>
+                            ) : null}
+                        </div>
+
                         <div className="grid gap-4 sm:grid-cols-2">
                             <div className="grid gap-2">
                                 <Label htmlFor="monthly-location">Local</Label>
@@ -372,7 +622,10 @@ export function MonthlyScheduleDialog({
                                 <select
                                     id="monthly-service"
                                     name="service_id"
-                                    defaultValue={services[0]?.id ?? ""}
+                                    value={serviceId}
+                                    onChange={(event) =>
+                                        handleServiceChange(event.target.value)
+                                    }
                                     className="h-9 rounded-md border border-input bg-background px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                                     aria-describedby={
                                         visibleState.fieldErrors?.serviceId
@@ -401,63 +654,7 @@ export function MonthlyScheduleDialog({
                             </div>
                         </div>
 
-                        <div className="grid gap-4 sm:grid-cols-3">
-                            <div className="grid gap-2">
-                                <Label htmlFor="monthly-start-time">Hora início</Label>
-                                <Input
-                                    id="monthly-start-time"
-                                    name="start_time"
-                                    type="time"
-                                    defaultValue="09:00"
-                                    step={300}
-                                    aria-describedby={
-                                        visibleState.fieldErrors?.startTime
-                                            ? "monthly-start-time-error"
-                                            : undefined
-                                    }
-                                    aria-invalid={Boolean(
-                                        visibleState.fieldErrors?.startTime
-                                    )}
-                                    required
-                                />
-                                {visibleState.fieldErrors?.startTime ? (
-                                    <p
-                                        id="monthly-start-time-error"
-                                        className="text-sm text-destructive"
-                                    >
-                                        {visibleState.fieldErrors.startTime}
-                                    </p>
-                                ) : null}
-                            </div>
-
-                            <div className="grid gap-2">
-                                <Label htmlFor="monthly-end-time">Hora fim</Label>
-                                <Input
-                                    id="monthly-end-time"
-                                    name="end_time"
-                                    type="time"
-                                    defaultValue="17:00"
-                                    step={300}
-                                    aria-describedby={
-                                        visibleState.fieldErrors?.endTime
-                                            ? "monthly-end-time-error"
-                                            : undefined
-                                    }
-                                    aria-invalid={Boolean(
-                                        visibleState.fieldErrors?.endTime
-                                    )}
-                                    required
-                                />
-                                {visibleState.fieldErrors?.endTime ? (
-                                    <p
-                                        id="monthly-end-time-error"
-                                        className="text-sm text-destructive"
-                                    >
-                                        {visibleState.fieldErrors.endTime}
-                                    </p>
-                                ) : null}
-                            </div>
-
+                        <div className="grid gap-4">
                             <div className="grid gap-2">
                                 <Label htmlFor="monthly-employee">Funcionário</Label>
                                 <select
@@ -498,11 +695,16 @@ export function MonthlyScheduleDialog({
                                 type="button"
                                 variant="outline"
                                 className="justify-between"
-                                onClick={() => setPatientsOpen((current) => !current)}
+                                onClick={() => {
+                                    setPatientsOpen((current) => !current);
+                                    setWeekdaysOpen(false);
+                                }}
                             >
                                 <span>
                                     {allPatients
                                         ? `Todos (${filteredPatients.length})`
+                                        : isNailCareSelected && selectedPatientsAreDiabetic
+                                          ? `${selectedCount} diabéticos selecionados`
                                         : `${selectedCount} selecionados`}
                                 </span>
                                 <ChevronDownIcon />
@@ -599,7 +801,13 @@ export function MonthlyScheduleDialog({
                             <Button type="button" variant="outline" onClick={closeDialog}>
                                 Cancelar
                             </Button>
-                            <SubmitButton disabled={isDisabled || selectedCount === 0} />
+                            <SubmitButton
+                                disabled={
+                                    isDisabled ||
+                                    selectedCount === 0 ||
+                                    selectedWeekdays.size === 0
+                                }
+                            />
                         </DialogFooter>
                     </form>
                 )}

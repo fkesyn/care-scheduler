@@ -39,7 +39,6 @@ type Patient = {
 type Service = {
     id: string;
     name: string;
-    duration_minutes: number | null;
     color: string | null;
     measurement_type: string | null;
     active: boolean | null;
@@ -63,7 +62,6 @@ type AppointmentService = {
     id: string;
     name: string;
     color: string | null;
-    duration_minutes: number | null;
     measurement_type: string | null;
 };
 
@@ -81,8 +79,6 @@ type AppointmentProfile = {
 type Appointment = {
     id: string;
     scheduled_date: string;
-    start_time: string;
-    end_time: string;
     status: string;
     notes: string | null;
     employees: AppointmentEmployee | AppointmentEmployee[] | null;
@@ -120,10 +116,6 @@ function formatDateLabel(dateValue: string) {
         month: "long",
         year: "numeric",
     }).format(date);
-}
-
-function formatTime(timeValue: string) {
-    return timeValue.slice(0, 5);
 }
 
 function measurementLabel(type: string | null | undefined) {
@@ -250,7 +242,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             .order("name"),
         supabase
             .from("services")
-            .select("id, name, duration_minutes, color, measurement_type, active")
+            .select("id, name, color, measurement_type, active")
             .eq("active", true)
             .order("name"),
         supabase
@@ -259,8 +251,6 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                 `
           id,
           scheduled_date,
-          start_time,
-          end_time,
           status,
           notes,
           employees (
@@ -274,11 +264,10 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             room,
             location_id
           ),
-          services (
+            services (
             id,
             name,
             color,
-            duration_minutes,
             measurement_type
           ),
           created_profile:profiles!appointments_created_by_fkey (
@@ -292,7 +281,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
         `
             )
             .eq("scheduled_date", selectedDate)
-            .order("start_time"),
+            .order("created_at"),
     ]);
 
     const loadError =
@@ -349,7 +338,6 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
         (service) => ({
             id: service.id,
             name: service.name,
-            durationMinutes: service.duration_minutes ?? 30,
             measurementType: service.measurement_type,
         })
     );
@@ -457,11 +445,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                                             scheduledDate: appointment.scheduled_date,
                                             serviceId: service?.id ?? null,
                                             serviceName: service?.name ?? "Serviço removido",
-                                            startTime: formatTime(appointment.start_time),
                                             status: appointment.status,
-                                            timeLabel: `${formatTime(appointment.start_time)}-${formatTime(
-                                                appointment.end_time
-                                            )}`,
                                             createdBy: profileLabel(createdProfile),
                                             updatedBy: profileLabel(updatedProfile),
                                         }}

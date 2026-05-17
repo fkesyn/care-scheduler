@@ -42,7 +42,6 @@ type PatientOption = {
 type ServiceOption = {
     id: string;
     name: string;
-    duration_minutes: number | null;
     measurement_type: string | null;
 };
 
@@ -51,7 +50,6 @@ type AppointmentRelation<T> = T | T[] | null;
 type Appointment = {
     id: string;
     scheduled_date: string;
-    start_time: string;
     status: string;
     patients: AppointmentRelation<{
         id: string;
@@ -120,10 +118,6 @@ function formatMonthLabel(dateValue: string) {
         month: "long",
         year: "numeric",
     }).format(date);
-}
-
-function formatTime(timeValue: string) {
-    return timeValue.slice(0, 5);
 }
 
 function buildMonthDays(selectedDate: string) {
@@ -201,7 +195,7 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
             .order("name"),
         supabase
             .from("services")
-            .select("id, name, duration_minutes, measurement_type")
+            .select("id, name, measurement_type")
             .eq("active", true)
             .order("name"),
     ]);
@@ -294,7 +288,6 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
             `
         id,
         scheduled_date,
-        start_time,
         status,
         patients!inner (
           id,
@@ -311,7 +304,7 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
         .gte("scheduled_date", startValue)
         .lte("scheduled_date", endValue)
         .order("scheduled_date")
-        .order("start_time");
+        .order("created_at");
 
     if (selectedLocationId) {
         appointmentsQuery = appointmentsQuery.eq(
@@ -539,7 +532,6 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                                                             aria-hidden="true"
                                                         />
                                                         <span className="truncate">
-                                                            {formatTime(appointment.start_time)} ·{" "}
                                                             {patient?.name ?? "Utente"}
                                                         </span>
                                                     </div>
