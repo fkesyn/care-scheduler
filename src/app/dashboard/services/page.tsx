@@ -17,7 +17,6 @@ type Service = {
     id: string;
     name: string;
     duration_minutes: number | null;
-    color: string | null;
     measurement_type: string | null;
     active: boolean | null;
     created_at: string | null;
@@ -41,7 +40,7 @@ export default async function ServicesPage() {
     const supabase = await createClient();
     const { data: services, error } = await supabase
         .from("services")
-        .select("id, name, duration_minutes, color, measurement_type, active, created_at")
+        .select("id, name, duration_minutes, measurement_type, active, created_at")
         .order("name");
 
     if (error) {
@@ -102,17 +101,7 @@ export default async function ServicesPage() {
                                     return (
                                         <TableRow key={service.id}>
                                             <TableCell className="font-medium">
-                                                <span className="flex items-center gap-2">
-                                                    <span
-                                                        className="size-3 rounded-full"
-                                                        style={{
-                                                            backgroundColor:
-                                                                service.color ?? "#0f766e",
-                                                        }}
-                                                        aria-hidden="true"
-                                                    />
-                                                    {service.name}
-                                                </span>
+                                                {service.name}
                                             </TableCell>
                                             <TableCell className="text-muted-foreground">
                                                 {service.duration_minutes ?? 0} min

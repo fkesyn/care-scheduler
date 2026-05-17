@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { connection } from "next/server";
+import { CheckSquareIcon, XIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
@@ -25,6 +26,7 @@ type MonthPageProps = {
 type Location = {
     id: string;
     name: string;
+    color: string | null;
 };
 
 type Employee = {
@@ -59,7 +61,6 @@ type Appointment = {
     services: AppointmentRelation<{
         id: string;
         name: string;
-        color: string | null;
     }>;
 };
 
@@ -99,16 +100,28 @@ function addMonths(dateValue: string, months: number) {
     return formatDateInput(date);
 }
 
-function statusColor(status: string) {
+function AppointmentStatusIcon({ status }: { status: string }) {
     if (status === "completed") {
-        return "#16a34a";
+        return (
+            <CheckSquareIcon
+                className="size-3.5 shrink-0 text-green-600"
+                aria-label="Concluído"
+                role="img"
+            />
+        );
     }
 
     if (status === "canceled") {
-        return "#dc2626";
+        return (
+            <XIcon
+                className="size-3.5 shrink-0 text-red-600"
+                aria-label="Cancelado"
+                role="img"
+            />
+        );
     }
 
-    return "#facc15";
+    return null;
 }
 
 function formatMonthLabel(dateValue: string) {
@@ -182,7 +195,7 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
         { data: patients, error: patientsError },
         { data: services, error: servicesError },
     ] = await Promise.all([
-        supabase.from("locations").select("id, name").order("name"),
+        supabase.from("locations").select("id, name, color").order("name"),
         supabase
             .from("employees")
             .select("id, name")
@@ -296,8 +309,7 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
         ),
         services (
           id,
-          name,
-          color
+          name
         )
       `
         )
@@ -395,6 +407,9 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
     );
     const monthBulkEmployees = Array.from(bulkEmployeesById.values()).sort((a, b) =>
         a.name.localeCompare(b.name, "pt-PT", { sensitivity: "base" })
+    );
+    const locationColorById = new Map(
+        locationRows.map((location) => [location.id, location.color] as const)
     );
     const hasMonthAppointments = monthBulkAppointments.length > 0;
 
@@ -515,6 +530,9 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                                         {dayAppointments.slice(0, 3).map((appointment) => {
                                             const patient = firstRelation(appointment.patients);
                                             const service = firstRelation(appointment.services);
+                                            const patientColor = patient?.location_id
+                                                ? locationColorById.get(patient.location_id)
+                                                : null;
 
                                             return (
                                                 <div
@@ -522,30 +540,21 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                                                     className="min-w-0 rounded-md border bg-background px-2 py-1 text-xs"
                                                 >
                                                     <div className="flex min-w-0 items-center gap-1">
-                                                        <span
-                                                            className="size-2 shrink-0 rounded-full"
-                                                            style={{
-                                                                backgroundColor: statusColor(
-                                                                    appointment.status
-                                                                ),
-                                                            }}
-                                                            aria-hidden="true"
+                                                        <AppointmentStatusIcon
+                                                            status={appointment.status}
                                                         />
-                                                        <span className="truncate">
+                                                        <span
+                                                            className="min-w-0 truncate"
+                                                            style={{
+                                                                color: patientColor ?? undefined,
+                                                            }}
+                                                        >
                                                             {patient?.name ?? "Utente"}
                                                         </span>
                                                     </div>
 
-                                                    <div className="mt-1 flex min-w-0 items-center gap-1 text-muted-foreground">
-                                                        <span
-                                                            className="size-2 shrink-0 rounded-full"
-                                                            style={{
-                                                                backgroundColor:
-                                                                    service?.color ?? "#0f766e",
-                                                            }}
-                                                            aria-hidden="true"
-                                                        />
-                                                        <span className="truncate">
+                                                    <div className="mt-1 min-w-0 text-muted-foreground">
+                                                        <span className="block truncate">
                                                             {service?.name ?? "Serviço"}
                                                         </span>
                                                     </div>

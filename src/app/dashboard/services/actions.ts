@@ -23,6 +23,7 @@ export type DeleteServiceState = {
 const uuidPattern =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const allowedMeasurementTypes = new Set(["", "blood_pressure", "glucose"]);
+const defaultServiceColor = "#0f766e";
 
 export async function createService(
     _previousState: CreateServiceState,
@@ -30,7 +31,6 @@ export async function createService(
 ): Promise<CreateServiceState> {
     const name = String(formData.get("name") ?? "").trim();
     const durationMinutes = Number(formData.get("duration_minutes") ?? 30);
-    const color = String(formData.get("color") ?? "#0f766e").trim();
     const measurementType = String(formData.get("measurement_type") ?? "").trim();
     const active = formData.get("active") === "on";
 
@@ -78,7 +78,7 @@ export async function createService(
     const { error } = await supabase.rpc("create_service", {
         p_name: name,
         p_duration_minutes: durationMinutes,
-        p_color: color,
+        p_color: defaultServiceColor,
         p_measurement_type: measurementType || null,
         p_active: active,
     });
@@ -105,7 +105,6 @@ export async function updateService(
     const id = String(formData.get("id") ?? "").trim();
     const name = String(formData.get("name") ?? "").trim();
     const durationMinutes = Number(formData.get("duration_minutes") ?? 30);
-    const color = String(formData.get("color") ?? "#0f766e").trim();
     const measurementType = String(formData.get("measurement_type") ?? "").trim();
     const active = formData.get("active") === "on";
 
@@ -162,7 +161,6 @@ export async function updateService(
         .update({
             name,
             duration_minutes: durationMinutes,
-            color,
             measurement_type: measurementType || null,
             active,
         })

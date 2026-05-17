@@ -118,6 +118,56 @@ export function NewPatientDialog({
                         ) : null}
                     </div>
 
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="grid gap-2">
+                            <Label htmlFor="patient-birth-date">
+                                Data de nascimento
+                            </Label>
+                            <Input
+                                id="patient-birth-date"
+                                name="birth_date"
+                                type="date"
+                                aria-describedby={
+                                    visibleState.fieldErrors?.birthDate
+                                        ? "patient-birth-date-error"
+                                        : undefined
+                                }
+                                aria-invalid={Boolean(
+                                    visibleState.fieldErrors?.birthDate
+                                )}
+                            />
+                            {visibleState.fieldErrors?.birthDate ? (
+                                <p
+                                    id="patient-birth-date-error"
+                                    className="text-sm text-destructive"
+                                >
+                                    {visibleState.fieldErrors.birthDate}
+                                </p>
+                            ) : null}
+                        </div>
+
+                        <div className="grid gap-2">
+                            <Label htmlFor="patient-number">N.º Utente</Label>
+                            <Input id="patient-number" name="patient_number" />
+                        </div>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="grid gap-2">
+                            <Label htmlFor="patient-health-center">
+                                Centro de Saúde
+                            </Label>
+                            <Input id="patient-health-center" name="health_center" />
+                        </div>
+
+                        <div className="grid gap-2">
+                            <Label htmlFor="patient-family-doctor">
+                                Médico de Família
+                            </Label>
+                            <Input id="patient-family-doctor" name="family_doctor" />
+                        </div>
+                    </div>
+
                     <div className="grid gap-2">
                         <Label htmlFor="patient-location">Local</Label>
                         <select

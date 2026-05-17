@@ -10,6 +10,7 @@ export type CreatePatientState = {
     fieldErrors?: {
         name?: string;
         locationId?: string;
+        birthDate?: string;
     };
 };
 
@@ -22,6 +23,28 @@ export type DeletePatientState = {
 
 const uuidPattern =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+
+function isValidDateInput(dateValue: string) {
+    const [year, month, day] = dateValue.split("-").map(Number);
+    const date = new Date(year, month - 1, day);
+
+    return (
+        date.getFullYear() === year &&
+        date.getMonth() === month - 1 &&
+        date.getDate() === day
+    );
+}
+
+function isFutureDate(dateValue: string) {
+    const [year, month, day] = dateValue.split("-").map(Number);
+    const date = new Date(year, month - 1, day);
+    const today = new Date();
+
+    today.setHours(0, 0, 0, 0);
+
+    return date > today;
+}
 
 export async function createPatient(
     _previousState: CreatePatientState,
@@ -30,6 +53,10 @@ export async function createPatient(
     const name = String(formData.get("name") ?? "").trim();
     const locationId = String(formData.get("location_id") ?? "").trim();
     const room = String(formData.get("room") ?? "").trim();
+    const birthDate = String(formData.get("birth_date") ?? "").trim();
+    const healthCenter = String(formData.get("health_center") ?? "").trim();
+    const familyDoctor = String(formData.get("family_doctor") ?? "").trim();
+    const patientNumber = String(formData.get("patient_number") ?? "").trim();
     const notes = String(formData.get("notes") ?? "").trim();
     const isDiabetic = formData.get("is_diabetic") === "on";
     const active = formData.get("active") === "on";
@@ -42,6 +69,15 @@ export async function createPatient(
 
     if (!locationId) {
         fieldErrors.locationId = "Escolhe um local.";
+    }
+
+    if (
+        birthDate &&
+        (!datePattern.test(birthDate) ||
+            !isValidDateInput(birthDate) ||
+            isFutureDate(birthDate))
+    ) {
+        fieldErrors.birthDate = "Escolhe uma data de nascimento válida.";
     }
 
     if (Object.keys(fieldErrors).length > 0) {
@@ -68,6 +104,10 @@ export async function createPatient(
         p_name: name,
         p_location_id: locationId,
         p_room: room || null,
+        p_birth_date: birthDate || null,
+        p_health_center: healthCenter || null,
+        p_family_doctor: familyDoctor || null,
+        p_patient_number: patientNumber || null,
         p_notes: notes || null,
         p_is_diabetic: isDiabetic,
         p_active: active,
@@ -96,6 +136,10 @@ export async function updatePatient(
     const name = String(formData.get("name") ?? "").trim();
     const locationId = String(formData.get("location_id") ?? "").trim();
     const room = String(formData.get("room") ?? "").trim();
+    const birthDate = String(formData.get("birth_date") ?? "").trim();
+    const healthCenter = String(formData.get("health_center") ?? "").trim();
+    const familyDoctor = String(formData.get("family_doctor") ?? "").trim();
+    const patientNumber = String(formData.get("patient_number") ?? "").trim();
     const notes = String(formData.get("notes") ?? "").trim();
     const isDiabetic = formData.get("is_diabetic") === "on";
     const active = formData.get("active") === "on";
@@ -115,6 +159,15 @@ export async function updatePatient(
 
     if (!uuidPattern.test(locationId)) {
         fieldErrors.locationId = "Escolhe um local.";
+    }
+
+    if (
+        birthDate &&
+        (!datePattern.test(birthDate) ||
+            !isValidDateInput(birthDate) ||
+            isFutureDate(birthDate))
+    ) {
+        fieldErrors.birthDate = "Escolhe uma data de nascimento válida.";
     }
 
     if (Object.keys(fieldErrors).length > 0) {
@@ -143,6 +196,10 @@ export async function updatePatient(
             name,
             location_id: locationId,
             room: room || null,
+            birth_date: birthDate || null,
+            health_center: healthCenter || null,
+            family_doctor: familyDoctor || null,
+            patient_number: patientNumber || null,
             notes: notes || null,
             is_diabetic: isDiabetic,
             active,

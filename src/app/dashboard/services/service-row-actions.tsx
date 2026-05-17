@@ -30,7 +30,6 @@ type Service = {
     id: string;
     name: string;
     duration_minutes: number | null;
-    color: string | null;
     measurement_type: string | null;
     active: boolean | null;
 };
@@ -46,15 +45,6 @@ const updateInitialState: UpdateServiceState = {
 const deleteInitialState: DeleteServiceState = {
     status: "idle",
 };
-
-const colorOptions = [
-    { value: "#0f766e", label: "Verde" },
-    { value: "#2563eb", label: "Azul" },
-    { value: "#7c3aed", label: "Violeta" },
-    { value: "#d97706", label: "Âmbar" },
-    { value: "#e11d48", label: "Rosa" },
-    { value: "#475569", label: "Cinza" },
-];
 
 function SubmitButton({ children }: { children: ReactNode }) {
     const { pending } = useFormStatus();
@@ -165,24 +155,6 @@ export function ServiceRowActions({ service }: ServiceRowActionsProps) {
                                         }
                                     </p>
                                 ) : null}
-                            </div>
-
-                            <div className="grid gap-2">
-                                <Label htmlFor={`service-color-${service.id}`}>
-                                    Cor
-                                </Label>
-                                <select
-                                    id={`service-color-${service.id}`}
-                                    name="color"
-                                    defaultValue={service.color ?? "#0f766e"}
-                                    className="h-9 rounded-md border border-input bg-background px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                                >
-                                    {colorOptions.map((color) => (
-                                        <option key={color.value} value={color.value}>
-                                            {color.label}
-                                        </option>
-                                    ))}
-                                </select>
                             </div>
 
                             <div className="grid gap-2">

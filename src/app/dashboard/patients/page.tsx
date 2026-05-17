@@ -32,11 +32,25 @@ type Patient = {
     name: string;
     location_id: string | null;
     room: string | null;
+    birth_date: string | null;
+    health_center: string | null;
+    family_doctor: string | null;
+    patient_number: string | null;
     notes: string | null;
     is_diabetic: boolean | null;
     active: boolean | null;
     created_at: string | null;
 };
+
+function formatDate(dateValue: string | null) {
+    if (!dateValue) {
+        return "-";
+    }
+
+    return new Intl.DateTimeFormat("pt-PT", {
+        dateStyle: "medium",
+    }).format(new Date(`${dateValue}T00:00:00`));
+}
 
 export default async function PatientsPage({ searchParams }: PatientsPageProps) {
     await connection();
@@ -69,7 +83,9 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
 
     let patientsQuery = supabase
         .from("patients")
-        .select("id, name, location_id, room, notes, is_diabetic, active, created_at")
+        .select(
+            "id, name, location_id, room, birth_date, health_center, family_doctor, patient_number, notes, is_diabetic, active, created_at"
+        )
         .order("name");
 
     if (selectedLocation) {
@@ -102,7 +118,7 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
 
     return (
         <div className="p-6">
-            <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+            <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
                 <header className="flex flex-col gap-4">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                         <div className="flex flex-col gap-2">
@@ -151,10 +167,14 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
                             Não há utentes visíveis para este filtro.
                         </div>
                     ) : (
-                        <Table>
+                        <Table className="min-w-[1120px]">
                             <TableHeader>
                                 <TableRow className="bg-muted/50">
                                     <TableHead>Nome</TableHead>
+                                    <TableHead>Data nasc.</TableHead>
+                                    <TableHead>Centro de Saúde</TableHead>
+                                    <TableHead>Médico de Família</TableHead>
+                                    <TableHead>N.º Utente</TableHead>
                                     <TableHead>Local</TableHead>
                                     <TableHead>Quarto</TableHead>
                                     <TableHead>Perfil</TableHead>
@@ -166,6 +186,18 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
                                 {patientRows.map((patient) => (
                                     <TableRow key={patient.id}>
                                         <TableCell className="font-medium">{patient.name}</TableCell>
+                                        <TableCell className="text-muted-foreground">
+                                            {formatDate(patient.birth_date)}
+                                        </TableCell>
+                                        <TableCell className="max-w-40 truncate text-muted-foreground">
+                                            {patient.health_center || "-"}
+                                        </TableCell>
+                                        <TableCell className="max-w-40 truncate text-muted-foreground">
+                                            {patient.family_doctor || "-"}
+                                        </TableCell>
+                                        <TableCell className="text-muted-foreground">
+                                            {patient.patient_number || "-"}
+                                        </TableCell>
                                         <TableCell className="text-muted-foreground">
                                             {patient.location_id
                                                 ? locationNameById.get(patient.location_id) ?? "-"

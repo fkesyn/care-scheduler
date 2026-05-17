@@ -9,6 +9,7 @@ export type CreateLocationState = {
     message?: string;
     fieldErrors?: {
         name?: string;
+        color?: string;
     };
 };
 
@@ -21,21 +22,33 @@ export type DeleteLocationState = {
 
 const uuidPattern =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const hexColorPattern = /^#[0-9a-f]{6}$/i;
+const defaultLocationColor = "#0f766e";
 
 export async function createLocation(
     _previousState: CreateLocationState,
     formData: FormData
 ): Promise<CreateLocationState> {
     const name = String(formData.get("name") ?? "").trim();
+    const color =
+        String(formData.get("color") ?? defaultLocationColor).trim() ||
+        defaultLocationColor;
     const active = formData.get("active") === "on";
+    const fieldErrors: CreateLocationState["fieldErrors"] = {};
 
     if (!name) {
+        fieldErrors.name = "O nome do local é obrigatório.";
+    }
+
+    if (!hexColorPattern.test(color)) {
+        fieldErrors.color = "Escolhe uma cor válida.";
+    }
+
+    if (Object.keys(fieldErrors).length > 0) {
         return {
             status: "error",
-            message: "Preenche o nome do local.",
-            fieldErrors: {
-                name: "O nome do local é obrigatório.",
-            },
+            message: "Confirma os campos obrigatórios.",
+            fieldErrors,
         };
     }
 
@@ -66,6 +79,7 @@ export async function createLocation(
     const { error } = await supabase.from("locations").insert({
         organization_id: organizationId,
         name,
+        color,
         active,
     });
 
@@ -77,6 +91,8 @@ export async function createLocation(
     }
 
     revalidatePath("/dashboard/locations");
+    revalidatePath("/dashboard/calendar");
+    revalidatePath("/dashboard/calendar/month");
 
     return {
         status: "success",
@@ -90,7 +106,11 @@ export async function updateLocation(
 ): Promise<UpdateLocationState> {
     const id = String(formData.get("id") ?? "").trim();
     const name = String(formData.get("name") ?? "").trim();
+    const color =
+        String(formData.get("color") ?? defaultLocationColor).trim() ||
+        defaultLocationColor;
     const active = formData.get("active") === "on";
+    const fieldErrors: UpdateLocationState["fieldErrors"] = {};
 
     if (!uuidPattern.test(id)) {
         return {
@@ -100,12 +120,18 @@ export async function updateLocation(
     }
 
     if (!name) {
+        fieldErrors.name = "O nome do local é obrigatório.";
+    }
+
+    if (!hexColorPattern.test(color)) {
+        fieldErrors.color = "Escolhe uma cor válida.";
+    }
+
+    if (Object.keys(fieldErrors).length > 0) {
         return {
             status: "error",
-            message: "Preenche o nome do local.",
-            fieldErrors: {
-                name: "O nome do local é obrigatório.",
-            },
+            message: "Confirma os campos obrigatórios.",
+            fieldErrors,
         };
     }
 
@@ -123,7 +149,7 @@ export async function updateLocation(
 
     const { error } = await supabase
         .from("locations")
-        .update({ name, active })
+        .update({ name, color, active })
         .eq("id", id)
         .select("id")
         .single();

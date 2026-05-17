@@ -1,5 +1,6 @@
 "use client";
 
+import { CheckSquareIcon, XIcon } from "lucide-react";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
 
@@ -39,8 +40,8 @@ export type AppointmentDetails = {
     scheduledDate: string;
     status: string;
     notes: string | null;
-    color: string;
     patientName: string;
+    patientNameColor: string | null;
     patientRoom: string | null;
     locationName: string | null;
     serviceName: string;
@@ -97,16 +98,28 @@ function statusLabel(status: string) {
     return "Planeado";
 }
 
-function statusColor(status: string) {
+function AppointmentStatusIcon({ status }: { status: string }) {
     if (status === "completed") {
-        return "#16a34a";
+        return (
+            <CheckSquareIcon
+                className="size-4 shrink-0 text-green-600"
+                aria-label="Concluído"
+                role="img"
+            />
+        );
     }
 
     if (status === "canceled") {
-        return "#dc2626";
+        return (
+            <XIcon
+                className="size-4 shrink-0 text-red-600"
+                aria-label="Cancelado"
+                role="img"
+            />
+        );
     }
 
-    return "#facc15";
+    return null;
 }
 
 function statusBadgeVariant(status: string) {
@@ -204,12 +217,15 @@ export function AppointmentDetailsDialog({
                 >
                     <div className="grid gap-1">
                         <div className="flex flex-wrap items-center gap-2">
-                            <span
-                                className="size-3 rounded-full"
-                                style={{ backgroundColor: statusColor(appointment.status) }}
-                                aria-hidden="true"
-                            />
-                            <h2 className="font-medium">{appointment.patientName}</h2>
+                            <AppointmentStatusIcon status={appointment.status} />
+                            <h2
+                                className="font-medium"
+                                style={{
+                                    color: appointment.patientNameColor ?? undefined,
+                                }}
+                            >
+                                {appointment.patientName}
+                            </h2>
                             {appointment.patientRoom ? (
                                 <Badge variant="outline">Quarto {appointment.patientRoom}</Badge>
                             ) : null}

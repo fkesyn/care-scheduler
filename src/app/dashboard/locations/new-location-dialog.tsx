@@ -25,6 +25,7 @@ import { useActionDialog } from "@/lib/use-action-dialog";
 const initialState: CreateLocationState = {
     status: "idle",
 };
+const defaultLocationColor = "#0f766e";
 
 function SubmitButton() {
     const { pending } = useFormStatus();
@@ -100,6 +101,30 @@ export function NewLocationDialog() {
                         {visibleState.fieldErrors?.name ? (
                             <p id="location-name-error" className="text-sm text-destructive">
                                 {visibleState.fieldErrors.name}
+                            </p>
+                        ) : null}
+                    </div>
+
+                    <div className="grid gap-2">
+                        <Label htmlFor="location-color">Cor</Label>
+                        <div className="flex items-center gap-3">
+                            <input
+                                id="location-color"
+                                name="color"
+                                type="color"
+                                defaultValue={defaultLocationColor}
+                                className="h-10 w-14 rounded-md border border-input bg-background p-1 shadow-xs"
+                                aria-describedby={
+                                    visibleState.fieldErrors?.color
+                                        ? "location-color-error"
+                                        : undefined
+                                }
+                                aria-invalid={Boolean(visibleState.fieldErrors?.color)}
+                            />
+                        </div>
+                        {visibleState.fieldErrors?.color ? (
+                            <p id="location-color-error" className="text-sm text-destructive">
+                                {visibleState.fieldErrors.color}
                             </p>
                         ) : null}
                     </div>

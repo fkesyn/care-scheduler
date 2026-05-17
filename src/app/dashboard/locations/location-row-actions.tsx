@@ -29,6 +29,7 @@ import { cn } from "@/lib/utils";
 type Location = {
     id: string;
     name: string;
+    color: string | null;
     active: boolean | null;
 };
 
@@ -43,6 +44,7 @@ const updateInitialState: UpdateLocationState = {
 const deleteInitialState: DeleteLocationState = {
     status: "idle",
 };
+const defaultLocationColor = "#0f766e";
 
 function SubmitButton({ children }: { children: ReactNode }) {
     const { pending } = useFormStatus();
@@ -123,6 +125,27 @@ export function LocationRowActions({ location }: LocationRowActionsProps) {
                                 {updateDialog.visibleState.fieldErrors?.name ? (
                                     <p className="text-sm text-destructive">
                                         {updateDialog.visibleState.fieldErrors.name}
+                                    </p>
+                                ) : null}
+                            </div>
+
+                            <div className="grid gap-2">
+                                <Label htmlFor={`location-color-${location.id}`}>
+                                    Cor
+                                </Label>
+                                <input
+                                    id={`location-color-${location.id}`}
+                                    name="color"
+                                    type="color"
+                                    defaultValue={location.color ?? defaultLocationColor}
+                                    className="h-10 w-14 rounded-md border border-input bg-background p-1 shadow-xs"
+                                    aria-invalid={Boolean(
+                                        updateDialog.visibleState.fieldErrors?.color
+                                    )}
+                                />
+                                {updateDialog.visibleState.fieldErrors?.color ? (
+                                    <p className="text-sm text-destructive">
+                                        {updateDialog.visibleState.fieldErrors.color}
                                     </p>
                                 ) : null}
                             </div>

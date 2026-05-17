@@ -37,6 +37,10 @@ type Patient = {
     name: string;
     location_id: string | null;
     room: string | null;
+    birth_date: string | null;
+    health_center: string | null;
+    family_doctor: string | null;
+    patient_number: string | null;
     notes: string | null;
     is_diabetic: boolean | null;
     active: boolean | null;
@@ -137,6 +141,64 @@ export function PatientRowActions({
                                         {updateDialog.visibleState.fieldErrors.name}
                                     </p>
                                 ) : null}
+                            </div>
+
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <div className="grid gap-2">
+                                    <Label htmlFor={`patient-birth-date-${patient.id}`}>
+                                        Data de nascimento
+                                    </Label>
+                                    <Input
+                                        id={`patient-birth-date-${patient.id}`}
+                                        name="birth_date"
+                                        type="date"
+                                        defaultValue={patient.birth_date ?? ""}
+                                        aria-invalid={Boolean(
+                                            updateDialog.visibleState.fieldErrors
+                                                ?.birthDate
+                                        )}
+                                    />
+                                    {updateDialog.visibleState.fieldErrors?.birthDate ? (
+                                        <p className="text-sm text-destructive">
+                                            {updateDialog.visibleState.fieldErrors.birthDate}
+                                        </p>
+                                    ) : null}
+                                </div>
+
+                                <div className="grid gap-2">
+                                    <Label htmlFor={`patient-number-${patient.id}`}>
+                                        N.º Utente
+                                    </Label>
+                                    <Input
+                                        id={`patient-number-${patient.id}`}
+                                        name="patient_number"
+                                        defaultValue={patient.patient_number ?? ""}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <div className="grid gap-2">
+                                    <Label htmlFor={`patient-health-center-${patient.id}`}>
+                                        Centro de Saúde
+                                    </Label>
+                                    <Input
+                                        id={`patient-health-center-${patient.id}`}
+                                        name="health_center"
+                                        defaultValue={patient.health_center ?? ""}
+                                    />
+                                </div>
+
+                                <div className="grid gap-2">
+                                    <Label htmlFor={`patient-family-doctor-${patient.id}`}>
+                                        Médico de Família
+                                    </Label>
+                                    <Input
+                                        id={`patient-family-doctor-${patient.id}`}
+                                        name="family_doctor"
+                                        defaultValue={patient.family_doctor ?? ""}
+                                    />
+                                </div>
                             </div>
 
                             <div className="grid gap-2">

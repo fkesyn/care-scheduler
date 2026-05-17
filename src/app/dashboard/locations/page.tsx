@@ -16,6 +16,7 @@ import { NewLocationDialog } from "./new-location-dialog";
 type Location = {
     id: string;
     name: string;
+    color: string;
     active: boolean | null;
     created_at: string | null;
 };
@@ -26,7 +27,7 @@ export default async function LocationsPage() {
     const supabase = await createClient();
     const { data: locations, error } = await supabase
         .from("locations")
-        .select("id, name, active, created_at")
+        .select("id, name, color, active, created_at")
         .order("name");
 
     if (error) {
@@ -68,6 +69,7 @@ export default async function LocationsPage() {
                             <TableHeader>
                                 <TableRow className="bg-muted/50">
                                     <TableHead>Nome</TableHead>
+                                    <TableHead>Cor</TableHead>
                                     <TableHead>Estado</TableHead>
                                     <TableHead>Criado em</TableHead>
                                     <TableHead className="text-right">Ações</TableHead>
@@ -77,6 +79,18 @@ export default async function LocationsPage() {
                                 {locationRows.map((location) => (
                                     <TableRow key={location.id}>
                                         <TableCell className="font-medium">{location.name}</TableCell>
+                                        <TableCell>
+                                            <div className="flex items-center gap-2">
+                                                <span
+                                                    className="size-4 rounded-full border"
+                                                    style={{ backgroundColor: location.color }}
+                                                    aria-hidden="true"
+                                                />
+                                                <span className="font-mono text-xs text-muted-foreground">
+                                                    {location.color}
+                                                </span>
+                                            </div>
+                                        </TableCell>
                                         <TableCell>
                                             <Badge variant={location.active ? "secondary" : "outline"}>
                                                 {location.active ? "Ativo" : "Inativo"}

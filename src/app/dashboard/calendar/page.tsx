@@ -25,6 +25,7 @@ type CalendarPageProps = {
 type Location = {
     id: string;
     name: string;
+    color: string | null;
 };
 
 type Patient = {
@@ -39,7 +40,6 @@ type Patient = {
 type Service = {
     id: string;
     name: string;
-    color: string | null;
     measurement_type: string | null;
     active: boolean | null;
 };
@@ -61,7 +61,6 @@ type AppointmentPatient = {
 type AppointmentService = {
     id: string;
     name: string;
-    color: string | null;
     measurement_type: string | null;
 };
 
@@ -229,7 +228,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
         { data: services, error: servicesError },
         { data: appointments, error: appointmentsError },
     ] = await Promise.all([
-        supabase.from("locations").select("id, name").order("name"),
+        supabase.from("locations").select("id, name, color").order("name"),
         supabase
             .from("employees")
             .select("id, name, role, active")
@@ -242,7 +241,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             .order("name"),
         supabase
             .from("services")
-            .select("id, name, color, measurement_type, active")
+            .select("id, name, measurement_type, active")
             .eq("active", true)
             .order("name"),
         supabase
@@ -264,10 +263,9 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             room,
             location_id
           ),
-            services (
+          services (
             id,
             name,
-            color,
             measurement_type
           ),
           created_profile:profiles!appointments_created_by_fkey (
@@ -312,6 +310,9 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
 
     const locationNameById = new Map(
         locationRows.map((location) => [location.id, location.name] as const)
+    );
+    const locationColorById = new Map(
+        locationRows.map((location) => [location.id, location.color] as const)
     );
 
     const employeeOptions: AppointmentEmployeeOption[] = employeeRows.map(
@@ -422,6 +423,9 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                                 const locationName = patient?.location_id
                                     ? locationNameById.get(patient.location_id) ?? null
                                     : null;
+                                const patientNameColor = patient?.location_id
+                                    ? locationColorById.get(patient.location_id) ?? null
+                                    : null;
 
                                 return (
                                     <AppointmentDetailsDialog
@@ -431,7 +435,6 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                                         services={serviceOptions}
                                         appointment={{
                                             id: appointment.id,
-                                            color: service?.color ?? "#0f766e",
                                             employeeId: employee?.id ?? null,
                                             employeeLabel: employee
                                                 ? `${employee.name} · ${roleLabel(employee.role)}`
@@ -441,6 +444,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                                             notes: appointment.notes,
                                             patientId: patient?.id ?? null,
                                             patientName: patient?.name ?? "Utente removido",
+                                            patientNameColor,
                                             patientRoom: patient?.room ?? null,
                                             scheduledDate: appointment.scheduled_date,
                                             serviceId: service?.id ?? null,
