@@ -55,6 +55,7 @@ type AppointmentDetailsDialogProps = {
     employees: AppointmentEmployeeOption[];
     patients: AppointmentPatientOption[];
     services: AppointmentServiceOption[];
+    triggerVariant?: "default" | "groupItem";
 };
 
 const updateInitialState: UpdateAppointmentState = {
@@ -164,6 +165,7 @@ export function AppointmentDetailsDialog({
     employees,
     patients,
     services,
+    triggerVariant = "default",
 }: AppointmentDetailsDialogProps) {
     const [updateState, updateAction] = useActionState(
         updateAppointmentDetails,
@@ -206,36 +208,63 @@ export function AppointmentDetailsDialog({
         appointment.status,
         appointment.notes ?? "",
     ].join("-");
+    const isGroupItem = triggerVariant === "groupItem";
 
     return (
         <Dialog open={updateDialog.open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
                 <button
                     type="button"
-                    className="grid w-full gap-4 p-4 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:grid-cols-[1fr_auto] sm:items-start"
+                    className={cn(
+                        "grid w-full text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50",
+                        isGroupItem
+                            ? "gap-2 px-3 py-2"
+                            : "gap-4 p-4 sm:grid-cols-[1fr_auto] sm:items-start"
+                    )}
                 >
                     <div className="grid gap-1">
                         <div className="flex flex-wrap items-center gap-2">
                             <AppointmentStatusIcon status={appointment.status} />
-                            <h2
-                                className="font-medium"
-                                style={{
-                                    color: appointment.patientNameColor ?? undefined,
-                                }}
-                            >
-                                {appointment.patientName}
-                            </h2>
-                            {appointment.locationName ? (
-                                <Badge variant="outline">{appointment.locationName}</Badge>
-                            ) : null}
+                            {isGroupItem ? (
+                                <>
+                                    <span className="font-medium">
+                                        {appointment.serviceName}
+                                    </span>
+                                    {appointment.measurementLabel ? (
+                                        <Badge variant="outline">
+                                            {appointment.measurementLabel}
+                                        </Badge>
+                                    ) : null}
+                                </>
+                            ) : (
+                                <>
+                                    <h2
+                                        className="font-medium"
+                                        style={{
+                                            color:
+                                                appointment.patientNameColor ??
+                                                undefined,
+                                        }}
+                                    >
+                                        {appointment.patientName}
+                                    </h2>
+                                    {appointment.locationName ? (
+                                        <Badge variant="outline">
+                                            {appointment.locationName}
+                                        </Badge>
+                                    ) : null}
+                                </>
+                            )}
                         </div>
 
-                        <p className="text-sm text-muted-foreground">
-                            {appointment.serviceName}
-                            {appointment.measurementLabel
-                                ? ` · ${appointment.measurementLabel}`
-                                : ""}
-                        </p>
+                        {!isGroupItem ? (
+                            <p className="text-sm text-muted-foreground">
+                                {appointment.serviceName}
+                                {appointment.measurementLabel
+                                    ? ` · ${appointment.measurementLabel}`
+                                    : ""}
+                            </p>
+                        ) : null}
 
                         <p className="text-sm text-muted-foreground">
                             {appointment.employeeLabel ?? "Sem responsável atribuído"}
@@ -246,9 +275,11 @@ export function AppointmentDetailsDialog({
                         ) : null}
                     </div>
 
-                    <Badge variant={statusBadgeVariant(appointment.status)}>
-                        {statusLabel(appointment.status)}
-                    </Badge>
+                    {!isGroupItem ? (
+                        <Badge variant={statusBadgeVariant(appointment.status)}>
+                            {statusLabel(appointment.status)}
+                        </Badge>
+                    ) : null}
                 </button>
             </DialogTrigger>
 

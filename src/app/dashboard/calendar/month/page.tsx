@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { ChangeMonthStatusDialog } from "./change-month-status-dialog";
 import { ClearMonthAppointmentsDialog } from "./clear-month-appointments-dialog";
+import { ImportMonthAppointmentsDialog } from "./import-month-appointments-dialog";
 import { MonthFilters } from "./month-filters";
+import { MonthPickerDialog } from "./month-picker-dialog";
 import {
     MonthNavigationButton,
     MonthNavigationProvider,
@@ -62,6 +64,13 @@ type Appointment = {
         id: string;
         name: string;
     }>;
+};
+
+type MonthAppointmentGroup = {
+    appointments: Appointment[];
+    key: string;
+    patientName: string;
+    patientNameColor: string | null;
 };
 
 type MonthBulkAppointment = {
@@ -173,6 +182,33 @@ function firstRelation<T>(relation: T | T[] | null) {
     }
 
     return relation;
+}
+
+function groupMonthAppointments(
+    appointments: Appointment[],
+    locationColorById: Map<string, string | null>
+) {
+    const groups = new Map<string, MonthAppointmentGroup>();
+
+    for (const appointment of appointments) {
+        const patient = firstRelation(appointment.patients);
+        const key = patient?.id ?? `appointment:${appointment.id}`;
+        const current =
+            groups.get(key) ??
+            ({
+                appointments: [],
+                key,
+                patientName: patient?.name ?? "Utente",
+                patientNameColor: patient?.location_id
+                    ? locationColorById.get(patient.location_id) ?? null
+                    : null,
+            } satisfies MonthAppointmentGroup);
+
+        current.appointments.push(appointment);
+        groups.set(key, current);
+    }
+
+    return Array.from(groups.values());
 }
 
 export default async function CalendarMonthPage({ searchParams }: MonthPageProps) {
@@ -447,13 +483,14 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                             Anterior
                         </MonthNavigationButton>
 
-                        <MonthNavigationButton
-                            href={buildMonthHref({ date: formatDateInput(new Date()) })}
-                            size="sm"
-                            variant="secondary"
-                        >
-                            Este mês
-                        </MonthNavigationButton>
+                        <MonthPickerDialog
+                            label={formatMonthLabel(selectedDate)}
+                            selectedDate={selectedDate}
+                            selectedEmployeeId={selectedEmployeeId}
+                            selectedLocationId={selectedLocationId}
+                            selectedPatientId={selectedPatientId}
+                            selectedServiceId={selectedServiceId}
+                        />
 
                         <MonthNavigationButton
                             href={buildMonthHref({ date: addMonths(selectedDate, 1) })}
@@ -463,36 +500,39 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                             Seguinte
                         </MonthNavigationButton>
 
-                        <Button asChild size="sm">
-                            <Link href={buildDayHref(selectedDate)}>Ver dia</Link>
-                        </Button>
                     </div>
                 </header>
 
-                <div className="flex flex-wrap gap-2">
-                    <MonthlyScheduleDialog
-                        selectedDate={selectedDate}
-                        selectedLocationId={selectedLocationId}
-                        locations={locationRows}
-                        employees={employeeRows}
-                        patients={patientRows}
-                        services={serviceRows}
-                    />
-                    {hasMonthAppointments ? (
-                        <ChangeMonthStatusDialog
+                <div className="flex flex-col gap-2">
+                    <div className="flex flex-wrap gap-2">
+                        <MonthlyScheduleDialog
                             selectedDate={selectedDate}
-                            services={monthBulkServices}
-                            employees={monthBulkEmployees}
-                            hasUnassignedAppointments={hasUnassignedAppointments}
+                            selectedLocationId={selectedLocationId}
+                            locations={locationRows}
+                            employees={employeeRows}
+                            patients={patientRows}
+                            services={serviceRows}
                         />
-                    ) : null}
-                    <ClearMonthAppointmentsDialog selectedDate={selectedDate} />
-                    <Button asChild size="sm" variant="outline">
-                        <Link href={buildExportHref()}>
-                            <DownloadIcon />
-                            Exportar Excel
-                        </Link>
-                    </Button>
+                        {hasMonthAppointments ? (
+                            <ChangeMonthStatusDialog
+                                selectedDate={selectedDate}
+                                services={monthBulkServices}
+                                employees={monthBulkEmployees}
+                                hasUnassignedAppointments={hasUnassignedAppointments}
+                            />
+                        ) : null}
+                        <ClearMonthAppointmentsDialog selectedDate={selectedDate} />
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                        <Button asChild size="sm" variant="outline">
+                            <Link href={buildExportHref()}>
+                                <DownloadIcon />
+                                Exportar Excel
+                            </Link>
+                        </Button>
+                        <ImportMonthAppointmentsDialog />
+                    </div>
                 </div>
 
                 <MonthFilters
@@ -519,6 +559,10 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                     <div className="grid grid-cols-7">
                         {days.map((day) => {
                             const dayAppointments = appointmentsByDate.get(day.dateValue) ?? [];
+                            const dayAppointmentGroups = groupMonthAppointments(
+                                dayAppointments,
+                                locationColorById
+                            );
                             const isToday = day.dateValue === formatDateInput(new Date());
 
                             return (
@@ -546,44 +590,59 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                                     </div>
 
                                     <div className="grid gap-1">
-                                        {dayAppointments.slice(0, 3).map((appointment) => {
-                                            const patient = firstRelation(appointment.patients);
-                                            const service = firstRelation(appointment.services);
-                                            const patientColor = patient?.location_id
-                                                ? locationColorById.get(patient.location_id)
-                                                : null;
-
+                                        {dayAppointmentGroups.slice(0, 3).map((group) => {
                                             return (
                                                 <div
-                                                    key={appointment.id}
+                                                    key={group.key}
                                                     className="min-w-0 rounded-md border bg-background px-2 py-1 text-xs"
                                                 >
                                                     <div className="flex min-w-0 items-center gap-1">
-                                                        <AppointmentStatusIcon
-                                                            status={appointment.status}
-                                                        />
                                                         <span
                                                             className="min-w-0 truncate"
                                                             style={{
-                                                                color: patientColor ?? undefined,
+                                                                color:
+                                                                    group.patientNameColor ??
+                                                                    undefined,
                                                             }}
                                                         >
-                                                            {patient?.name ?? "Utente"}
+                                                            {group.patientName}
                                                         </span>
                                                     </div>
 
-                                                    <div className="mt-1 min-w-0 text-muted-foreground">
-                                                        <span className="block truncate">
-                                                            {service?.name ?? "Serviço"}
-                                                        </span>
+                                                    <div className="mt-1 grid min-w-0 gap-0.5 text-muted-foreground">
+                                                        {group.appointments.map(
+                                                            (appointment) => {
+                                                                const service =
+                                                                    firstRelation(
+                                                                        appointment.services
+                                                                    );
+
+                                                                return (
+                                                                    <span
+                                                                        key={appointment.id}
+                                                                        className="flex min-w-0 items-center gap-1"
+                                                                    >
+                                                                        <AppointmentStatusIcon
+                                                                            status={
+                                                                                appointment.status
+                                                                            }
+                                                                        />
+                                                                        <span className="min-w-0 truncate">
+                                                                            {service?.name ??
+                                                                                "Serviço"}
+                                                                        </span>
+                                                                    </span>
+                                                                );
+                                                            }
+                                                        )}
                                                     </div>
                                                 </div>
                                             );
                                         })}
 
-                                        {dayAppointments.length > 3 ? (
+                                        {dayAppointmentGroups.length > 3 ? (
                                             <p className="text-xs text-muted-foreground">
-                                                +{dayAppointments.length - 3} mais
+                                                +{dayAppointmentGroups.length - 3} mais
                                             </p>
                                         ) : null}
                                     </div>

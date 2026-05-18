@@ -4,7 +4,10 @@ import { connection } from "next/server";
 
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
-import { AppointmentDetailsDialog } from "./appointment-details-dialog";
+import {
+    AppointmentDetailsDialog,
+    type AppointmentDetails,
+} from "./appointment-details-dialog";
 import {
     NewAppointmentDialog,
     type AppointmentEmployeeOption,
@@ -85,6 +88,14 @@ type Appointment = {
     updated_profile: AppointmentProfile | AppointmentProfile[] | null;
 };
 
+type AppointmentGroup = {
+    key: string;
+    locationName: string | null;
+    patientName: string;
+    patientNameColor: string | null;
+    appointments: AppointmentDetails[];
+};
+
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
 function formatDateInput(date: Date) {
@@ -153,6 +164,28 @@ function firstRelation<T>(relation: T | T[] | null) {
 
 function profileLabel(profile: AppointmentProfile | null) {
     return profile?.full_name ?? profile?.email ?? null;
+}
+
+function groupAppointmentsByPatient(appointments: AppointmentDetails[]) {
+    const groups = new Map<string, AppointmentGroup>();
+
+    for (const appointment of appointments) {
+        const key = appointment.patientId ?? `appointment:${appointment.id}`;
+        const current =
+            groups.get(key) ??
+            ({
+                appointments: [],
+                key,
+                locationName: appointment.locationName,
+                patientName: appointment.patientName,
+                patientNameColor: appointment.patientNameColor,
+            } satisfies AppointmentGroup);
+
+        current.appointments.push(appointment);
+        groups.set(key, current);
+    }
+
+    return Array.from(groups.values());
 }
 
 function buildCalendarHref(
@@ -338,6 +371,41 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             measurementType: service.measurement_type,
         })
     );
+    const appointmentDetails = appointmentRows.map((appointment) => {
+        const employee = firstRelation(appointment.employees);
+        const patient = firstRelation(appointment.patients);
+        const service = firstRelation(appointment.services);
+        const createdProfile = firstRelation(appointment.created_profile);
+        const updatedProfile = firstRelation(appointment.updated_profile);
+        const measurement = measurementLabel(service?.measurement_type);
+        const locationName = patient?.location_id
+            ? locationNameById.get(patient.location_id) ?? null
+            : null;
+        const patientNameColor = patient?.location_id
+            ? locationColorById.get(patient.location_id) ?? null
+            : null;
+
+        return {
+            id: appointment.id,
+            employeeId: employee?.id ?? null,
+            employeeLabel: employee
+                ? `${employee.name} · ${roleLabel(employee.role)}`
+                : null,
+            locationName,
+            measurementLabel: measurement,
+            notes: appointment.notes,
+            patientId: patient?.id ?? null,
+            patientName: patient?.name ?? "Utente removido",
+            patientNameColor,
+            scheduledDate: appointment.scheduled_date,
+            serviceId: service?.id ?? null,
+            serviceName: service?.name ?? "Serviço removido",
+            status: appointment.status,
+            createdBy: profileLabel(createdProfile),
+            updatedBy: profileLabel(updatedProfile),
+        } satisfies AppointmentDetails;
+    });
+    const appointmentGroups = groupAppointmentsByPatient(appointmentDetails);
 
     return (
         <div className="p-6">
@@ -407,50 +475,51 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                             Não há marcações para este dia.
                         </div>
                     ) : (
-                        <div className="divide-y">
-                            {appointmentRows.map((appointment) => {
-                                const employee = firstRelation(appointment.employees);
-                                const patient = firstRelation(appointment.patients);
-                                const service = firstRelation(appointment.services);
-                                const createdProfile = firstRelation(appointment.created_profile);
-                                const updatedProfile = firstRelation(appointment.updated_profile);
-
-                                const measurement = measurementLabel(service?.measurement_type);
-                                const locationName = patient?.location_id
-                                    ? locationNameById.get(patient.location_id) ?? null
-                                    : null;
-                                const patientNameColor = patient?.location_id
-                                    ? locationColorById.get(patient.location_id) ?? null
-                                    : null;
-
-                                return (
-                                    <AppointmentDetailsDialog
-                                        key={appointment.id}
-                                        employees={employeeOptions}
-                                        patients={patientOptions}
-                                        services={serviceOptions}
-                                        appointment={{
-                                            id: appointment.id,
-                                            employeeId: employee?.id ?? null,
-                                            employeeLabel: employee
-                                                ? `${employee.name} · ${roleLabel(employee.role)}`
-                                                : null,
-                                            locationName,
-                                            measurementLabel: measurement,
-                                            notes: appointment.notes,
-                                            patientId: patient?.id ?? null,
-                                            patientName: patient?.name ?? "Utente removido",
-                                            patientNameColor,
-                                            scheduledDate: appointment.scheduled_date,
-                                            serviceId: service?.id ?? null,
-                                            serviceName: service?.name ?? "Serviço removido",
-                                            status: appointment.status,
-                                            createdBy: profileLabel(createdProfile),
-                                            updatedBy: profileLabel(updatedProfile),
-                                        }}
-                                    />
-                                );
-                            })}
+                        <div className="grid gap-3 p-3">
+                            {appointmentGroups.map((group) => (
+                                <div
+                                    key={group.key}
+                                    className="overflow-hidden rounded-md border bg-background"
+                                >
+                                    <div className="flex flex-wrap items-center justify-between gap-2 border-b bg-muted/30 px-4 py-3">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <h2
+                                                className="font-medium"
+                                                style={{
+                                                    color:
+                                                        group.patientNameColor ??
+                                                        undefined,
+                                                }}
+                                            >
+                                                {group.patientName}
+                                            </h2>
+                                            {group.locationName ? (
+                                                <span className="rounded-md border px-2 py-0.5 text-xs text-muted-foreground">
+                                                    {group.locationName}
+                                                </span>
+                                            ) : null}
+                                        </div>
+                                        <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                                            {group.appointments.length}{" "}
+                                            {group.appointments.length === 1
+                                                ? "marcação"
+                                                : "marcações"}
+                                        </span>
+                                    </div>
+                                    <div className="divide-y">
+                                        {group.appointments.map((appointment) => (
+                                            <AppointmentDetailsDialog
+                                                key={appointment.id}
+                                                employees={employeeOptions}
+                                                patients={patientOptions}
+                                                services={serviceOptions}
+                                                appointment={appointment}
+                                                triggerVariant="groupItem"
+                                            />
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     )}
                 </section>
