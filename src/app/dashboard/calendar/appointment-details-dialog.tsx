@@ -42,7 +42,6 @@ export type AppointmentDetails = {
     notes: string | null;
     patientName: string;
     patientNameColor: string | null;
-    patientRoom: string | null;
     locationName: string | null;
     serviceName: string;
     measurementLabel: string | null;
@@ -226,9 +225,6 @@ export function AppointmentDetailsDialog({
                             >
                                 {appointment.patientName}
                             </h2>
-                            {appointment.patientRoom ? (
-                                <Badge variant="outline">Quarto {appointment.patientRoom}</Badge>
-                            ) : null}
                             {appointment.locationName ? (
                                 <Badge variant="outline">{appointment.locationName}</Badge>
                             ) : null}
@@ -405,7 +401,6 @@ export function AppointmentDetailsDialog({
                                     {patients.map((patient) => (
                                         <option key={patient.id} value={patient.id}>
                                             {patient.name}
-                                            {patient.room ? ` · Quarto ${patient.room}` : ""}
                                             {` · ${patient.locationName}`}
                                             {patient.isDiabetic ? " · diabético" : ""}
                                         </option>

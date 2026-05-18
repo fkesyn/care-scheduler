@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useActionDialog } from "@/lib/use-action-dialog";
 import { cn } from "@/lib/utils";
+import { PatientProfileDropdown } from "./patient-profile-dropdown";
 
 type LocationOption = {
     id: string;
@@ -70,7 +71,7 @@ export function NewPatientDialog({
                     Novo utente
                 </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
                 <DialogHeader>
                     <DialogTitle>Novo utente</DialogTitle>
                     <DialogDescription>
@@ -118,8 +119,8 @@ export function NewPatientDialog({
                         ) : null}
                     </div>
 
-                    <div className="grid gap-4 sm:grid-cols-2">
-                        <div className="grid gap-2">
+                    <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                        <div className="grid min-w-0 gap-2">
                             <Label htmlFor="patient-birth-date">
                                 Data de nascimento
                             </Label>
@@ -146,21 +147,21 @@ export function NewPatientDialog({
                             ) : null}
                         </div>
 
-                        <div className="grid gap-2">
+                        <div className="grid min-w-0 gap-2">
                             <Label htmlFor="patient-number">N.º Utente</Label>
                             <Input id="patient-number" name="patient_number" />
                         </div>
                     </div>
 
-                    <div className="grid gap-4 sm:grid-cols-2">
-                        <div className="grid gap-2">
+                    <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                        <div className="grid min-w-0 gap-2">
                             <Label htmlFor="patient-health-center">
                                 Centro de Saúde
                             </Label>
                             <Input id="patient-health-center" name="health_center" />
                         </div>
 
-                        <div className="grid gap-2">
+                        <div className="grid min-w-0 gap-2">
                             <Label htmlFor="patient-family-doctor">
                                 Médico de Família
                             </Label>
@@ -175,7 +176,7 @@ export function NewPatientDialog({
                             name="location_id"
                             defaultValue={selectedLocation ?? ""}
                             className={cn(
-                                "h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+                                "h-9 w-full min-w-0 rounded-md border border-input bg-background px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
                                 visibleState.fieldErrors?.locationId &&
                                     "border-destructive ring-3 ring-destructive/20"
                             )}
@@ -205,11 +206,6 @@ export function NewPatientDialog({
                     </div>
 
                     <div className="grid gap-2">
-                        <Label htmlFor="patient-room">Quarto</Label>
-                        <Input id="patient-room" name="room" placeholder="Ex.: 12A" />
-                    </div>
-
-                    <div className="grid gap-2">
                         <Label htmlFor="patient-notes">Notas</Label>
                         <Textarea
                             id="patient-notes"
@@ -218,24 +214,16 @@ export function NewPatientDialog({
                         />
                     </div>
 
-                    <div className="grid gap-2 sm:grid-cols-2">
-                        <Label className="flex h-9 items-center gap-2 rounded-md border px-3">
-                            <input
-                                type="checkbox"
-                                name="is_diabetic"
-                                className="size-4 rounded border-input accent-foreground"
-                            />
-                            Diabético
-                        </Label>
-
-                        <Label className="flex h-9 items-center gap-2 rounded-md border px-3">
+                    <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_9rem] sm:items-end">
+                        <PatientProfileDropdown />
+                        <Label className="flex min-h-9 items-center gap-2 rounded-md border px-3 py-2 text-sm leading-tight">
                             <input
                                 type="checkbox"
                                 name="active"
                                 defaultChecked
-                                className="size-4 rounded border-input accent-foreground"
+                                className="size-4 shrink-0 rounded border-input accent-foreground"
                             />
-                            Ativo
+                            <span className="min-w-0 break-words">Ativo</span>
                         </Label>
                     </div>
 

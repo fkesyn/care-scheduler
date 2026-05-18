@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { CheckSquareIcon, XIcon } from "lucide-react";
+import { CheckSquareIcon, DownloadIcon, XIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
@@ -295,6 +295,19 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
         return `/dashboard/calendar?${query.toString()}`;
     }
 
+    function buildExportHref() {
+        const query = new URLSearchParams();
+
+        query.set("date", selectedDate);
+
+        if (selectedLocationId) query.set("locationId", selectedLocationId);
+        if (selectedEmployeeId) query.set("employeeId", selectedEmployeeId);
+        if (selectedPatientId) query.set("patientId", selectedPatientId);
+        if (selectedServiceId) query.set("serviceId", selectedServiceId);
+
+        return `/dashboard/calendar/month/export?${query.toString()}`;
+    }
+
     let appointmentsQuery = supabase
         .from("appointments")
         .select(
@@ -474,6 +487,12 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                         />
                     ) : null}
                     <ClearMonthAppointmentsDialog selectedDate={selectedDate} />
+                    <Button asChild size="sm" variant="outline">
+                        <Link href={buildExportHref()}>
+                            <DownloadIcon />
+                            Exportar Excel
+                        </Link>
+                    </Button>
                 </div>
 
                 <MonthFilters

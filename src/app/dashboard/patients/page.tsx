@@ -12,6 +12,7 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/server";
+import type { FamilyContact } from "./family-contacts-dialog";
 import { NewPatientDialog } from "./new-patient-dialog";
 import { PatientRowActions } from "./patient-row-actions";
 
@@ -31,13 +32,14 @@ type Patient = {
     id: string;
     name: string;
     location_id: string | null;
-    room: string | null;
     birth_date: string | null;
     health_center: string | null;
     family_doctor: string | null;
     patient_number: string | null;
     notes: string | null;
     is_diabetic: boolean | null;
+    is_hypertensive: boolean | null;
+    has_active_wounds: boolean | null;
     active: boolean | null;
     created_at: string | null;
 };
@@ -50,6 +52,28 @@ function formatDate(dateValue: string | null) {
     return new Intl.DateTimeFormat("pt-PT", {
         dateStyle: "medium",
     }).format(new Date(`${dateValue}T00:00:00`));
+}
+
+function PatientProfileBadges({ patient }: { patient: Patient }) {
+    const badges = [
+        patient.is_diabetic ? "Diabético" : null,
+        patient.is_hypertensive ? "Hipertenso" : null,
+        patient.has_active_wounds ? "Feridas ativas" : null,
+    ].filter(Boolean);
+
+    if (badges.length === 0) {
+        return <span className="text-muted-foreground">-</span>;
+    }
+
+    return (
+        <div className="flex min-w-36 flex-wrap gap-1 whitespace-normal">
+            {badges.map((badge) => (
+                <Badge key={badge} variant="secondary">
+                    {badge}
+                </Badge>
+            ))}
+        </div>
+    );
 }
 
 export default async function PatientsPage({ searchParams }: PatientsPageProps) {
@@ -84,7 +108,7 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
     let patientsQuery = supabase
         .from("patients")
         .select(
-            "id, name, location_id, room, birth_date, health_center, family_doctor, patient_number, notes, is_diabetic, active, created_at"
+            "id, name, location_id, birth_date, health_center, family_doctor, patient_number, notes, is_diabetic, is_hypertensive, has_active_wounds, active, created_at"
         )
         .order("name");
 
@@ -112,6 +136,38 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
     }
 
     const patientRows = (patients ?? []) as Patient[];
+    const patientIds = patientRows.map((patient) => patient.id);
+    const { data: familyContacts, error: familyContactsError } =
+        patientIds.length > 0
+            ? await supabase
+                  .from("patient_family_contacts")
+                  .select("id, patient_id, name, relationship, contact")
+                  .in("patient_id", patientIds)
+                  .order("name")
+            : { data: [], error: null };
+
+    if (familyContactsError) {
+        return (
+            <div className="p-6">
+                <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
+                    <h1 className="text-2xl font-semibold tracking-tight">Utentes</h1>
+                    <p className="text-sm text-destructive">
+                        Erro ao carregar contactos familiares:{" "}
+                        {familyContactsError.message}
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
+    const familyContactsByPatientId = new Map<string, FamilyContact[]>();
+
+    for (const contact of (familyContacts ?? []) as FamilyContact[]) {
+        const current = familyContactsByPatientId.get(contact.patient_id) ?? [];
+        current.push(contact);
+        familyContactsByPatientId.set(contact.patient_id, current);
+    }
+
     const locationNameById = new Map(
         locationRows.map((item) => [item.id, item.name] as const)
     );
@@ -167,7 +223,7 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
                             Não há utentes visíveis para este filtro.
                         </div>
                     ) : (
-                        <Table className="min-w-[1120px]">
+                        <Table className="min-w-[1040px]">
                             <TableHeader>
                                 <TableRow className="bg-muted/50">
                                     <TableHead>Nome</TableHead>
@@ -175,57 +231,71 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
                                     <TableHead>Centro de Saúde</TableHead>
                                     <TableHead>Médico de Família</TableHead>
                                     <TableHead>N.º Utente</TableHead>
+                                    <TableHead>Contactos</TableHead>
                                     <TableHead>Local</TableHead>
-                                    <TableHead>Quarto</TableHead>
                                     <TableHead>Perfil</TableHead>
                                     <TableHead>Estado</TableHead>
                                     <TableHead className="text-right">Ações</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {patientRows.map((patient) => (
-                                    <TableRow key={patient.id}>
-                                        <TableCell className="font-medium">{patient.name}</TableCell>
-                                        <TableCell className="text-muted-foreground">
-                                            {formatDate(patient.birth_date)}
-                                        </TableCell>
-                                        <TableCell className="max-w-40 truncate text-muted-foreground">
-                                            {patient.health_center || "-"}
-                                        </TableCell>
-                                        <TableCell className="max-w-40 truncate text-muted-foreground">
-                                            {patient.family_doctor || "-"}
-                                        </TableCell>
-                                        <TableCell className="text-muted-foreground">
-                                            {patient.patient_number || "-"}
-                                        </TableCell>
-                                        <TableCell className="text-muted-foreground">
-                                            {patient.location_id
-                                                ? locationNameById.get(patient.location_id) ?? "-"
-                                                : "-"}
-                                        </TableCell>
-                                        <TableCell className="text-muted-foreground">
-                                            {patient.room || "-"}
-                                        </TableCell>
-                                        <TableCell>
-                                            {patient.is_diabetic ? (
-                                                <Badge variant="secondary">Diabético</Badge>
-                                            ) : (
-                                                <span className="text-muted-foreground">-</span>
-                                            )}
-                                        </TableCell>
-                                        <TableCell>
-                                            <Badge variant={patient.active ? "secondary" : "outline"}>
-                                                {patient.active ? "Ativo" : "Inativo"}
-                                            </Badge>
-                                        </TableCell>
-                                        <TableCell>
-                                            <PatientRowActions
-                                                patient={patient}
-                                                locations={locationRows}
-                                            />
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
+                                {patientRows.map((patient) => {
+                                    const contacts =
+                                        familyContactsByPatientId.get(patient.id) ?? [];
+
+                                    return (
+                                        <TableRow key={patient.id}>
+                                            <TableCell className="font-medium">
+                                                {patient.name}
+                                            </TableCell>
+                                            <TableCell className="text-muted-foreground">
+                                                {formatDate(patient.birth_date)}
+                                            </TableCell>
+                                            <TableCell className="max-w-40 truncate text-muted-foreground">
+                                                {patient.health_center || "-"}
+                                            </TableCell>
+                                            <TableCell className="max-w-40 truncate text-muted-foreground">
+                                                {patient.family_doctor || "-"}
+                                            </TableCell>
+                                            <TableCell className="text-muted-foreground">
+                                                {patient.patient_number || "-"}
+                                            </TableCell>
+                                            <TableCell>
+                                                {contacts.length > 0 ? (
+                                                    <Badge variant="secondary">
+                                                        {contacts.length}
+                                                    </Badge>
+                                                ) : (
+                                                    <span className="text-muted-foreground">-</span>
+                                                )}
+                                            </TableCell>
+                                            <TableCell className="text-muted-foreground">
+                                                {patient.location_id
+                                                    ? locationNameById.get(patient.location_id) ?? "-"
+                                                    : "-"}
+                                            </TableCell>
+                                            <TableCell className="whitespace-normal">
+                                                <PatientProfileBadges patient={patient} />
+                                            </TableCell>
+                                            <TableCell>
+                                                <Badge
+                                                    variant={
+                                                        patient.active ? "secondary" : "outline"
+                                                    }
+                                                >
+                                                    {patient.active ? "Ativo" : "Inativo"}
+                                                </Badge>
+                                            </TableCell>
+                                            <TableCell>
+                                                <PatientRowActions
+                                                    familyContacts={contacts}
+                                                    patient={patient}
+                                                    locations={locationRows}
+                                                />
+                                            </TableCell>
+                                        </TableRow>
+                                    );
+                                })}
                             </TableBody>
                         </Table>
                     )}

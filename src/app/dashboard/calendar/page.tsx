@@ -31,7 +31,6 @@ type Location = {
 type Patient = {
     id: string;
     name: string;
-    room: string | null;
     location_id: string | null;
     is_diabetic: boolean | null;
     active: boolean | null;
@@ -54,7 +53,6 @@ type Employee = {
 type AppointmentPatient = {
     id: string;
     name: string;
-    room: string | null;
     location_id: string | null;
 };
 
@@ -236,7 +234,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             .order("name"),
         supabase
             .from("patients")
-            .select("id, name, room, location_id, is_diabetic, active")
+            .select("id, name, location_id, is_diabetic, active")
             .eq("active", true)
             .order("name"),
         supabase
@@ -260,7 +258,6 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
           patients (
             id,
             name,
-            room,
             location_id
           ),
           services (
@@ -327,7 +324,6 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
         (patient) => ({
             id: patient.id,
             name: patient.name,
-            room: patient.room,
             isDiabetic: Boolean(patient.is_diabetic),
             locationName: patient.location_id
                 ? locationNameById.get(patient.location_id) ?? "Sem local"
@@ -445,7 +441,6 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                                             patientId: patient?.id ?? null,
                                             patientName: patient?.name ?? "Utente removido",
                                             patientNameColor,
-                                            patientRoom: patient?.room ?? null,
                                             scheduledDate: appointment.scheduled_date,
                                             serviceId: service?.id ?? null,
                                             serviceName: service?.name ?? "Serviço removido",

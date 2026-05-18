@@ -26,6 +26,11 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useActionDialog } from "@/lib/use-action-dialog";
 import { cn } from "@/lib/utils";
+import {
+    FamilyContactsDialog,
+    type FamilyContact,
+} from "./family-contacts-dialog";
+import { PatientProfileDropdown } from "./patient-profile-dropdown";
 
 type LocationOption = {
     id: string;
@@ -36,17 +41,19 @@ type Patient = {
     id: string;
     name: string;
     location_id: string | null;
-    room: string | null;
     birth_date: string | null;
     health_center: string | null;
     family_doctor: string | null;
     patient_number: string | null;
     notes: string | null;
     is_diabetic: boolean | null;
+    is_hypertensive: boolean | null;
+    has_active_wounds: boolean | null;
     active: boolean | null;
 };
 
 type PatientRowActionsProps = {
+    familyContacts: FamilyContact[];
     patient: Patient;
     locations: LocationOption[];
 };
@@ -80,6 +87,7 @@ function DeleteButton() {
 }
 
 export function PatientRowActions({
+    familyContacts,
     patient,
     locations,
 }: PatientRowActionsProps) {
@@ -96,13 +104,19 @@ export function PatientRowActions({
 
     return (
         <div className="flex justify-end gap-2">
+            <FamilyContactsDialog
+                contacts={familyContacts}
+                patientId={patient.id}
+                patientName={patient.name}
+            />
+
             <Dialog open={updateDialog.open} onOpenChange={updateDialog.setOpen}>
                 <DialogTrigger asChild>
                     <Button size="icon-sm" variant="ghost" aria-label="Editar utente">
                         <PencilIcon />
                     </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
                     <DialogHeader>
                         <DialogTitle>Editar utente</DialogTitle>
                         <DialogDescription>
@@ -143,8 +157,8 @@ export function PatientRowActions({
                                 ) : null}
                             </div>
 
-                            <div className="grid gap-4 sm:grid-cols-2">
-                                <div className="grid gap-2">
+                            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                                <div className="grid min-w-0 gap-2">
                                     <Label htmlFor={`patient-birth-date-${patient.id}`}>
                                         Data de nascimento
                                     </Label>
@@ -165,7 +179,7 @@ export function PatientRowActions({
                                     ) : null}
                                 </div>
 
-                                <div className="grid gap-2">
+                                <div className="grid min-w-0 gap-2">
                                     <Label htmlFor={`patient-number-${patient.id}`}>
                                         N.º Utente
                                     </Label>
@@ -177,8 +191,8 @@ export function PatientRowActions({
                                 </div>
                             </div>
 
-                            <div className="grid gap-4 sm:grid-cols-2">
-                                <div className="grid gap-2">
+                            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                                <div className="grid min-w-0 gap-2">
                                     <Label htmlFor={`patient-health-center-${patient.id}`}>
                                         Centro de Saúde
                                     </Label>
@@ -189,7 +203,7 @@ export function PatientRowActions({
                                     />
                                 </div>
 
-                                <div className="grid gap-2">
+                                <div className="grid min-w-0 gap-2">
                                     <Label htmlFor={`patient-family-doctor-${patient.id}`}>
                                         Médico de Família
                                     </Label>
@@ -209,7 +223,7 @@ export function PatientRowActions({
                                     id={`patient-location-${patient.id}`}
                                     name="location_id"
                                     defaultValue={patient.location_id ?? ""}
-                                    className="h-9 rounded-md border border-input bg-background px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                    className="h-9 w-full min-w-0 rounded-md border border-input bg-background px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                                     aria-invalid={Boolean(
                                         updateDialog.visibleState.fieldErrors
                                             ?.locationId
@@ -236,17 +250,6 @@ export function PatientRowActions({
                             </div>
 
                             <div className="grid gap-2">
-                                <Label htmlFor={`patient-room-${patient.id}`}>
-                                    Quarto
-                                </Label>
-                                <Input
-                                    id={`patient-room-${patient.id}`}
-                                    name="room"
-                                    defaultValue={patient.room ?? ""}
-                                />
-                            </div>
-
-                            <div className="grid gap-2">
                                 <Label htmlFor={`patient-notes-${patient.id}`}>
                                     Notas
                                 </Label>
@@ -257,25 +260,22 @@ export function PatientRowActions({
                                 />
                             </div>
 
-                            <div className="grid gap-2 sm:grid-cols-2">
-                                <Label className="flex h-9 items-center gap-2 rounded-md border px-3">
-                                    <input
-                                        type="checkbox"
-                                        name="is_diabetic"
-                                        defaultChecked={Boolean(patient.is_diabetic)}
-                                        className="size-4 rounded border-input accent-foreground"
-                                    />
-                                    Diabético
-                                </Label>
-
-                                <Label className="flex h-9 items-center gap-2 rounded-md border px-3">
+                            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_9rem] sm:items-end">
+                                <PatientProfileDropdown
+                                    defaultValues={{
+                                        hasActiveWounds: patient.has_active_wounds,
+                                        isDiabetic: patient.is_diabetic,
+                                        isHypertensive: patient.is_hypertensive,
+                                    }}
+                                />
+                                <Label className="flex min-h-9 items-center gap-2 rounded-md border px-3 py-2 text-sm leading-tight">
                                     <input
                                         type="checkbox"
                                         name="active"
                                         defaultChecked={Boolean(patient.active)}
-                                        className="size-4 rounded border-input accent-foreground"
+                                        className="size-4 shrink-0 rounded border-input accent-foreground"
                                     />
-                                    Ativo
+                                    <span className="min-w-0 break-words">Ativo</span>
                                 </Label>
                             </div>
 

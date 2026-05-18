@@ -27,7 +27,6 @@ import { cn } from "@/lib/utils";
 export type AppointmentPatientOption = {
     id: string;
     name: string;
-    room: string | null;
     isDiabetic: boolean;
     locationName: string;
 };
@@ -201,7 +200,6 @@ export function NewAppointmentDialog({
                             {patients.map((patient) => (
                                 <option key={patient.id} value={patient.id}>
                                     {patient.name}
-                                    {patient.room ? ` · Quarto ${patient.room}` : ""}
                                     {` · ${patient.locationName}`}
                                     {patient.isDiabetic ? " · diabético" : ""}
                                 </option>
