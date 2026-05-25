@@ -20,9 +20,131 @@ export type DeleteEmployeeState = {
     message?: string;
 };
 
+export type WorkPreferenceFormState = {
+    status: "idle" | "success" | "error";
+    message?: string;
+    fieldErrors?: {
+        id?: string;
+        employeeId?: string;
+        preferenceType?: string;
+        shiftTypeId?: string;
+        weekday?: string;
+        notes?: string;
+    };
+};
+
+export type DeleteWorkPreferenceState = {
+    status: "idle" | "success" | "error";
+    message?: string;
+};
+
 const allowedRoles = new Set(["nurse", "assistant", "caregiver", "other"]);
+const allowedPreferenceTypes = new Set([
+    "preferred_shift",
+    "avoid_shift",
+    "only_shift",
+    "preferred_day_off",
+    "unavailable_weekday",
+    "max_shifts_per_week",
+]);
+const shiftRequiredPreferenceTypes = new Set([
+    "preferred_shift",
+    "avoid_shift",
+    "only_shift",
+]);
+const noShiftAllowedPreferenceTypes = new Set([
+    "preferred_day_off",
+    "unavailable_weekday",
+    "max_shifts_per_week",
+]);
 const uuidPattern =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+async function getEmployeeActionContext() {
+    const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+        return {
+            error: "A sessão expirou. Faz login novamente.",
+            organizationId: null,
+            supabase,
+        };
+    }
+
+    const { data: organizationId, error: organizationError } = await supabase.rpc(
+        "my_organization_id"
+    );
+
+    if (organizationError || !organizationId) {
+        return {
+            error:
+                "Não consegui encontrar a organização deste utilizador. Confirma a ligação do user à organização.",
+            organizationId: null,
+            supabase,
+        };
+    }
+
+    return {
+        error: null,
+        organizationId: String(organizationId),
+        supabase,
+    };
+}
+
+async function validateEmployeeForOrganization(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    employeeId: string,
+    organizationId: string
+) {
+    if (!uuidPattern.test(employeeId)) {
+        return false;
+    }
+
+    const { data, error } = await supabase
+        .from("employees")
+        .select("id")
+        .eq("id", employeeId)
+        .eq("organization_id", organizationId)
+        .maybeSingle();
+
+    return !error && Boolean(data);
+}
+
+async function validateShiftTypeForOrganization(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    shiftTypeId: string,
+    organizationId: string
+) {
+    if (!uuidPattern.test(shiftTypeId)) {
+        return false;
+    }
+
+    const { data, error } = await supabase
+        .from("shift_types")
+        .select("id")
+        .eq("id", shiftTypeId)
+        .eq("organization_id", organizationId)
+        .maybeSingle();
+
+    return !error && Boolean(data);
+}
+
+function normalizeWeekday(value: string) {
+    if (!value) {
+        return null;
+    }
+
+    const parsed = Number(value);
+
+    if (!Number.isInteger(parsed) || parsed < 0 || parsed > 6) {
+        return null;
+    }
+
+    return parsed;
+}
 
 export async function createEmployee(
     _previousState: CreateEmployeeState,
@@ -224,5 +346,295 @@ export async function deleteEmployee(
     return {
         status: "success",
         message: "Pessoa apagada.",
+    };
+}
+
+export async function createEmployeeWorkPreference(
+    _previousState: WorkPreferenceFormState,
+    formData: FormData
+): Promise<WorkPreferenceFormState> {
+    const employeeId = String(formData.get("employee_id") ?? "").trim();
+    const preferenceType = String(formData.get("preference_type") ?? "").trim();
+    const shiftTypeId = String(formData.get("shift_type_id") ?? "").trim();
+    const weekdayInput = String(formData.get("weekday") ?? "").trim();
+    const notes = String(formData.get("notes") ?? "").trim();
+    const active = formData.get("active") === "on";
+    const fieldErrors: WorkPreferenceFormState["fieldErrors"] = {};
+
+    if (!uuidPattern.test(employeeId)) {
+        fieldErrors.employeeId = "Funcionário inválido.";
+    }
+
+    if (!allowedPreferenceTypes.has(preferenceType)) {
+        fieldErrors.preferenceType = "Escolhe um tipo de preferência válido.";
+    }
+
+    if (
+        shiftRequiredPreferenceTypes.has(preferenceType) &&
+        !uuidPattern.test(shiftTypeId)
+    ) {
+        fieldErrors.shiftTypeId = "Escolhe um turno válido.";
+    }
+
+    if (noShiftAllowedPreferenceTypes.has(preferenceType) && shiftTypeId) {
+        fieldErrors.shiftTypeId = "Este tipo não permite turno.";
+    }
+
+    const weekday = normalizeWeekday(weekdayInput);
+    if (weekdayInput && weekday === null) {
+        fieldErrors.weekday = "Escolhe um dia da semana válido.";
+    }
+
+    if (
+        preferenceType === "unavailable_weekday" &&
+        weekday === null &&
+        !fieldErrors.weekday
+    ) {
+        fieldErrors.weekday =
+            "Escolhe um dia da semana para indisponibilidade recorrente.";
+    }
+
+    if (Object.keys(fieldErrors).length > 0) {
+        return {
+            status: "error",
+            message: "Confirma os campos obrigatórios.",
+            fieldErrors,
+        };
+    }
+
+    const context = await getEmployeeActionContext();
+
+    if (context.error) {
+        return {
+            status: "error",
+            message: context.error,
+        };
+    }
+
+    const employeeIsValid = await validateEmployeeForOrganization(
+        context.supabase,
+        employeeId,
+        context.organizationId
+    );
+
+    if (!employeeIsValid) {
+        return {
+            status: "error",
+            message: "Funcionário inválido para esta organização.",
+        };
+    }
+
+    if (shiftTypeId) {
+        const shiftTypeIsValid = await validateShiftTypeForOrganization(
+            context.supabase,
+            shiftTypeId,
+            context.organizationId
+        );
+
+        if (!shiftTypeIsValid) {
+            return {
+                status: "error",
+                message: "Turno inválido para esta organização.",
+            };
+        }
+    }
+
+    const { error } = await context.supabase.from("employee_work_preferences").insert({
+        organization_id: context.organizationId,
+        employee_id: employeeId,
+        preference_type: preferenceType,
+        shift_type_id: shiftTypeId || null,
+        weekday,
+        active,
+        notes: notes || null,
+    });
+
+    if (error) {
+        return {
+            status: "error",
+            message: `Não consegui criar a preferência fixa: ${error.message}`,
+        };
+    }
+
+    revalidatePath("/dashboard/employees");
+    revalidatePath(`/dashboard/employees/${employeeId}`);
+    revalidatePath("/dashboard/schedules");
+
+    return {
+        status: "success",
+        message: "Preferência fixa adicionada.",
+    };
+}
+
+export async function updateEmployeeWorkPreference(
+    _previousState: WorkPreferenceFormState,
+    formData: FormData
+): Promise<WorkPreferenceFormState> {
+    const id = String(formData.get("id") ?? "").trim();
+    const employeeId = String(formData.get("employee_id") ?? "").trim();
+    const preferenceType = String(formData.get("preference_type") ?? "").trim();
+    const shiftTypeId = String(formData.get("shift_type_id") ?? "").trim();
+    const weekdayInput = String(formData.get("weekday") ?? "").trim();
+    const notes = String(formData.get("notes") ?? "").trim();
+    const active = formData.get("active") === "on";
+    const fieldErrors: WorkPreferenceFormState["fieldErrors"] = {};
+
+    if (!uuidPattern.test(id)) {
+        fieldErrors.id = "Preferência inválida.";
+    }
+
+    if (!uuidPattern.test(employeeId)) {
+        fieldErrors.employeeId = "Funcionário inválido.";
+    }
+
+    if (!allowedPreferenceTypes.has(preferenceType)) {
+        fieldErrors.preferenceType = "Escolhe um tipo de preferência válido.";
+    }
+
+    if (
+        shiftRequiredPreferenceTypes.has(preferenceType) &&
+        !uuidPattern.test(shiftTypeId)
+    ) {
+        fieldErrors.shiftTypeId = "Escolhe um turno válido.";
+    }
+
+    if (noShiftAllowedPreferenceTypes.has(preferenceType) && shiftTypeId) {
+        fieldErrors.shiftTypeId = "Este tipo não permite turno.";
+    }
+
+    const weekday = normalizeWeekday(weekdayInput);
+    if (weekdayInput && weekday === null) {
+        fieldErrors.weekday = "Escolhe um dia da semana válido.";
+    }
+
+    if (
+        preferenceType === "unavailable_weekday" &&
+        weekday === null &&
+        !fieldErrors.weekday
+    ) {
+        fieldErrors.weekday =
+            "Escolhe um dia da semana para indisponibilidade recorrente.";
+    }
+
+    if (Object.keys(fieldErrors).length > 0) {
+        return {
+            status: "error",
+            message: "Confirma os campos obrigatórios.",
+            fieldErrors,
+        };
+    }
+
+    const context = await getEmployeeActionContext();
+
+    if (context.error) {
+        return {
+            status: "error",
+            message: context.error,
+        };
+    }
+
+    const employeeIsValid = await validateEmployeeForOrganization(
+        context.supabase,
+        employeeId,
+        context.organizationId
+    );
+
+    if (!employeeIsValid) {
+        return {
+            status: "error",
+            message: "Funcionário inválido para esta organização.",
+        };
+    }
+
+    if (shiftTypeId) {
+        const shiftTypeIsValid = await validateShiftTypeForOrganization(
+            context.supabase,
+            shiftTypeId,
+            context.organizationId
+        );
+
+        if (!shiftTypeIsValid) {
+            return {
+                status: "error",
+                message: "Turno inválido para esta organização.",
+            };
+        }
+    }
+
+    const { error } = await context.supabase
+        .from("employee_work_preferences")
+        .update({
+            employee_id: employeeId,
+            preference_type: preferenceType,
+            shift_type_id: shiftTypeId || null,
+            weekday,
+            active,
+            notes: notes || null,
+        })
+        .eq("id", id)
+        .eq("organization_id", context.organizationId)
+        .select("id")
+        .single();
+
+    if (error) {
+        return {
+            status: "error",
+            message: `Não consegui atualizar a preferência fixa: ${error.message}`,
+        };
+    }
+
+    revalidatePath("/dashboard/employees");
+    revalidatePath(`/dashboard/employees/${employeeId}`);
+    revalidatePath("/dashboard/schedules");
+
+    return {
+        status: "success",
+        message: "Preferência fixa atualizada.",
+    };
+}
+
+export async function deleteEmployeeWorkPreference(
+    _previousState: DeleteWorkPreferenceState,
+    formData: FormData
+): Promise<DeleteWorkPreferenceState> {
+    const id = String(formData.get("id") ?? "").trim();
+    const employeeId = String(formData.get("employee_id") ?? "").trim();
+
+    if (!uuidPattern.test(id) || !uuidPattern.test(employeeId)) {
+        return {
+            status: "error",
+            message: "Preferência inválida.",
+        };
+    }
+
+    const context = await getEmployeeActionContext();
+
+    if (context.error) {
+        return {
+            status: "error",
+            message: context.error,
+        };
+    }
+
+    const { error } = await context.supabase
+        .from("employee_work_preferences")
+        .delete()
+        .eq("id", id)
+        .eq("organization_id", context.organizationId);
+
+    if (error) {
+        return {
+            status: "error",
+            message: `Não consegui apagar a preferência fixa: ${error.message}`,
+        };
+    }
+
+    revalidatePath("/dashboard/employees");
+    revalidatePath(`/dashboard/employees/${employeeId}`);
+    revalidatePath("/dashboard/schedules");
+
+    return {
+        status: "success",
+        message: "Preferência fixa apagada.",
     };
 }

@@ -1,6 +1,8 @@
 import { connection } from "next/server";
+import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
     Table,
     TableBody,
@@ -103,6 +105,9 @@ export default async function EmployeesPage() {
                                     <TableHead>Contacto</TableHead>
                                     <TableHead>Cédula</TableHead>
                                     <TableHead>Estado</TableHead>
+                                    <TableHead className="text-right">
+                                        Preferências fixas
+                                    </TableHead>
                                     <TableHead className="text-right">Ações</TableHead>
                                 </TableRow>
                             </TableHeader>
@@ -110,7 +115,12 @@ export default async function EmployeesPage() {
                                 {employeeRows.map((employee) => (
                                     <TableRow key={employee.id}>
                                         <TableCell className="font-medium">
-                                            {employee.name}
+                                            <Link
+                                                href={`/dashboard/employees/${employee.id}`}
+                                                className="hover:underline"
+                                            >
+                                                {employee.name}
+                                            </Link>
                                         </TableCell>
                                         <TableCell>
                                             <Badge
@@ -137,6 +147,15 @@ export default async function EmployeesPage() {
                                             >
                                                 {employee.active ? "Ativo" : "Inativo"}
                                             </Badge>
+                                        </TableCell>
+                                        <TableCell className="text-right">
+                                            <Button asChild size="sm" variant="outline">
+                                                <Link
+                                                    href={`/dashboard/employees/${employee.id}`}
+                                                >
+                                                    Configurar
+                                                </Link>
+                                            </Button>
                                         </TableCell>
                                         <TableCell>
                                             <EmployeeRowActions employee={employee} />

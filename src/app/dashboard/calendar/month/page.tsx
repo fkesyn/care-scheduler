@@ -3,6 +3,11 @@ import { connection } from "next/server";
 import { CheckSquareIcon, DownloadIcon, XIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+    getHolidayForDateFromList,
+    getHolidaysForDateRange,
+} from "@/lib/holidays/get-holiday-for-date";
+import { syncPortugueseHolidays } from "@/lib/holidays/sync-portuguese-holidays";
 import { createClient } from "@/lib/supabase/server";
 import { ChangeMonthStatusDialog } from "./change-month-status-dialog";
 import { ClearMonthAppointmentsDialog } from "./clear-month-appointments-dialog";
@@ -224,6 +229,10 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
     const { days, startValue, endValue } = buildMonthDays(selectedDate);
 
     const supabase = await createClient();
+    const selectedYear = Number(selectedDate.slice(0, 4));
+
+    // Best-effort sync: UI uses stored DB data even if API fails.
+    void syncPortugueseHolidays(selectedYear, supabase).catch(() => null);
 
     const [
         { data: locations, error: locationsError },
@@ -425,6 +434,7 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
 
     const appointments = (data ?? []) as Appointment[];
     const monthBulkAppointments = (monthBulkData ?? []) as MonthBulkAppointment[];
+    const monthHolidays = await getHolidaysForDateRange(startValue, endValue);
     const appointmentsByDate = new Map<string, Appointment[]>();
     const bulkServicesById = new Map<string, { id: string; name: string }>();
     const bulkEmployeesById = new Map<string, { id: string; name: string }>();
@@ -559,6 +569,10 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                     <div className="grid grid-cols-7">
                         {days.map((day) => {
                             const dayAppointments = appointmentsByDate.get(day.dateValue) ?? [];
+                            const dayHoliday = getHolidayForDateFromList(
+                                monthHolidays,
+                                day.dateValue
+                            );
                             const dayAppointmentGroups = groupMonthAppointments(
                                 dayAppointments,
                                 locationColorById
@@ -574,6 +588,9 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                                         !day.isCurrentMonth
                                             ? "bg-muted/20 text-muted-foreground"
                                             : "",
+                                        dayHoliday
+                                            ? "bg-amber-50/70 ring-1 ring-amber-200"
+                                            : "",
                                         isToday ? "bg-primary/5" : "",
                                     ].join(" ")}
                                 >
@@ -588,6 +605,12 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                       </span>
                                         ) : null}
                                     </div>
+
+                                    {dayHoliday ? (
+                                        <p className="mb-2 truncate text-[10px] font-medium uppercase tracking-wide text-amber-800">
+                                            {dayHoliday.name}
+                                        </p>
+                                    ) : null}
 
                                     <div className="grid gap-1">
                                         {dayAppointmentGroups.slice(0, 3).map((group) => {

@@ -2,6 +2,7 @@
 
 import {
     BriefcaseMedicalIcon,
+    CalendarClockIcon,
     CalendarDaysIcon,
     ClipboardListIcon,
     MapPinIcon,
@@ -34,6 +35,11 @@ const items = [
         href: "/dashboard/services",
         label: "Serviços",
         icon: ClipboardListIcon,
+    },
+    {
+        href: "/dashboard/schedules",
+        label: "Horários",
+        icon: CalendarClockIcon,
     },
     {
         href: "/dashboard/calendar/month",
