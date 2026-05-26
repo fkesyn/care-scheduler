@@ -2185,6 +2185,9 @@ export async function generateMonthlySchedule(
                 "Falta o turno MT (Manhã + Tarde) para gerar automaticamente os fins de semana.",
         };
     }
+    const morningShiftSafe = morningShift;
+    const afternoonShiftSafe = afternoonShift;
+    const extendedDayShiftSafe = extendedDayShift;
     const weekendCombinedShiftSafe = weekendCombinedShift;
 
     const monthDays = generationMonthDays;
@@ -2687,17 +2690,21 @@ export async function generateMonthlySchedule(
         const prioritizeHolidayBalance = options?.prioritizeHolidayBalance ?? false;
         const requiredShiftIds =
             requiredShift.id === weekendCombinedShiftSafe.id
-                ? [weekendCombinedShiftSafe.id, morningShift.id, afternoonShift.id]
+                ? [
+                      weekendCombinedShiftSafe.id,
+                      morningShiftSafe.id,
+                      afternoonShiftSafe.id,
+                  ]
                 : [requiredShift.id];
 
         const sortedCandidates = [...candidates].sort((first, second) => {
             const firstConstraints = constraintsByEmployee.get(first.id) ?? [];
             const secondConstraints = constraintsByEmployee.get(second.id) ?? [];
             const oppositePreferredShiftId =
-                requiredShift.id === morningShift.id
-                    ? afternoonShift.id
-                    : requiredShift.id === afternoonShift.id
-                      ? morningShift.id
+                requiredShift.id === morningShiftSafe.id
+                    ? afternoonShiftSafe.id
+                    : requiredShift.id === afternoonShiftSafe.id
+                      ? morningShiftSafe.id
                       : null;
             const firstPreferred = requiredShiftIds.some((shiftId) =>
                 hasPreferredShift(firstConstraints, dateValue, shiftId)
@@ -2839,8 +2846,8 @@ export async function generateMonthlySchedule(
 
         return (
             isHardBlockedForShift(constraints, dateValue, weekendCombinedShiftSafe.id) ||
-            isHardBlockedForShift(constraints, dateValue, morningShift.id) ||
-            isHardBlockedForShift(constraints, dateValue, afternoonShift.id)
+            isHardBlockedForShift(constraints, dateValue, morningShiftSafe.id) ||
+            isHardBlockedForShift(constraints, dateValue, afternoonShiftSafe.id)
         );
     }
 
@@ -2855,8 +2862,8 @@ export async function generateMonthlySchedule(
 
         return (
             hasSoftAvoidanceForShift(constraints, dateValue, weekendCombinedShiftSafe.id) ||
-            hasSoftAvoidanceForShift(constraints, dateValue, morningShift.id) ||
-            hasSoftAvoidanceForShift(constraints, dateValue, afternoonShift.id)
+            hasSoftAvoidanceForShift(constraints, dateValue, morningShiftSafe.id) ||
+            hasSoftAvoidanceForShift(constraints, dateValue, afternoonShiftSafe.id)
         );
     }
 
@@ -2918,9 +2925,9 @@ export async function generateMonthlySchedule(
         }
 
         const fallbackWorkShifts = [
-            afternoonShift,
-            morningShift,
-            extendedDayShift,
+            afternoonShiftSafe,
+            morningShiftSafe,
+            extendedDayShiftSafe,
             weekendCombinedShiftSafe,
         ].filter(Boolean) as GenerationShiftType[];
 
@@ -3020,10 +3027,10 @@ export async function generateMonthlySchedule(
         const isHoliday = holidayDates.has(dateValue);
         const dayAssignedEmployees = new Set<string>();
         const requiredShifts: GenerationShiftType[] = isHoliday
-            ? [afternoonShift, morningShift]
+            ? [afternoonShiftSafe, morningShiftSafe]
             : isWeekend
               ? [weekendCombinedShiftSafe]
-              : [afternoonShift, morningShift, extendedDayShift];
+              : [afternoonShiftSafe, morningShiftSafe, extendedDayShiftSafe];
 
         for (const requiredShift of requiredShifts) {
             const hardCandidates = employees.filter((employee) => {
