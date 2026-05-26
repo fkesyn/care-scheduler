@@ -706,10 +706,18 @@ export async function createMonthlySchedule(
         };
     }
 
+    const organizationId = context.organizationId;
+    if (!organizationId) {
+        return {
+            status: "error",
+            message: "Não consegui identificar a organização ativa.",
+        };
+    }
+
     if (!locationId) {
         locationId = await resolveDefaultScheduleLocationId(
             context.supabase,
-            context.organizationId
+            organizationId
         );
     }
 
@@ -728,7 +736,7 @@ export async function createMonthlySchedule(
     const { data, error } = await context.supabase
         .from("monthly_schedules")
         .insert({
-            organization_id: context.organizationId,
+            organization_id: organizationId,
             location_id: locationId,
             month,
             status: "draft",
