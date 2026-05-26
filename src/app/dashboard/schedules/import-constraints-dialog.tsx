@@ -189,7 +189,7 @@ function isSocialText(value: string) {
 function hasStrongConstraintSignals(value: string) {
     const normalizedValue = normalizeForMatch(value);
 
-    if (!normalizedValue || isSocialText(value)) {
+    if (!normalizedValue) {
         return false;
     }
 
@@ -200,7 +200,13 @@ function hasStrongConstraintSignals(value: string) {
         /\bprefir[oa]\b/.test(normalizedValue) ||
         /\bpreferenc(?:ia|ias)\b/.test(normalizedValue) ||
         /\bmanhas?\b/.test(normalizedValue) ||
-        /\btardes?\b/.test(normalizedValue);
+        /\btardes?\b/.test(normalizedValue) ||
+        /\b(?:primeira|segunda|terceira|quarta)\s+seman+a\b/.test(normalizedValue) ||
+        /\b\d+\s+turnos?\b/.test(normalizedValue) ||
+        /\b(?:m\*|e\*|mt)\b/.test(normalizedValue) ||
+        /\b(?:segundas?|tercas?|quartas?|quintas?|sextas?|sabados?|domingos?)\b/.test(
+            normalizedValue
+        );
 
     if (hasRestrictionKeyword) {
         return true;
@@ -219,13 +225,14 @@ function hasStrongConstraintSignals(value: string) {
 function hasAiActionableSignal(value: string) {
     const normalizedValue = normalizeForMatch(value);
 
-    if (!normalizedValue || isSocialText(value)) {
+    if (!normalizedValue) {
         return false;
     }
 
     if (
         /\bnao\s+(?:posso|pode)\s+fazer\b/.test(normalizedValue) ||
-        /\bnao\s+fazer\s+(?:manhas?|tardes?)\b/.test(normalizedValue)
+        /\bnao\s+fazer\s+(?:manhas?|tardes?)\b/.test(normalizedValue) ||
+        /\bso\s+fazer\s+(?:m\*|e\*|mt|manhas?|tardes?)\b/.test(normalizedValue)
     ) {
         return true;
     }
@@ -244,6 +251,31 @@ function hasAiActionableSignal(value: string) {
     if (
         /\bprefere?\s+(?:manhas?|tardes?)\b/.test(normalizedValue) ||
         /\bprefiro\s+(?:manhas?|tardes?)\b/.test(normalizedValue)
+    ) {
+        return true;
+    }
+
+    if (
+        /\b(?:primeira|segunda|terceira|quarta)\s+seman+a\b/.test(normalizedValue) &&
+        /\b\d+\s+turnos?\b/.test(normalizedValue)
+    ) {
+        return true;
+    }
+
+    if (
+        /\b\d+\s+turnos?\b/.test(normalizedValue) &&
+        /\b(?:m\*|e\*|mt|manha|manha|tarde)\b/.test(normalizedValue)
+    ) {
+        return true;
+    }
+
+    if (
+        /\b(?:segundas?|tercas?|quartas?|quintas?|sextas?|sabados?|domingos?)\b/.test(
+            normalizedValue
+        ) &&
+        /\b(?:ignorar|excepto|exceto|nao|preferenc(?:ia|ias)|prefere|prefiro)\b/.test(
+            normalizedValue
+        )
     ) {
         return true;
     }
@@ -418,6 +450,70 @@ function parseDayList(value: string) {
     const days = (value.match(/\d{1,2}/g) ?? []).map(Number);
 
     return [...new Set(days)];
+}
+
+function parseWeekIndexes(value: string) {
+    const normalizedValue = normalizeForMatch(value);
+    const indexes = new Set<number>();
+
+    if (/\bprimeira\b/.test(normalizedValue)) indexes.add(1);
+    if (/\bsegunda\b/.test(normalizedValue)) indexes.add(2);
+    if (/\bterceira\b/.test(normalizedValue)) indexes.add(3);
+    if (/\bquarta\b/.test(normalizedValue)) indexes.add(4);
+    if (/\bquinta\b/.test(normalizedValue)) indexes.add(5);
+
+    return [...indexes].sort((first, second) => first - second);
+}
+
+function weekDateRange(
+    weekIndex: number,
+    monthStart: string,
+    monthEnd: string
+): { startDate: string; endDate: string } | null {
+    const lastDay = Number(monthEnd.slice(8, 10));
+    const startDay = (weekIndex - 1) * 7 + 1;
+    const endDay = Math.min(startDay + 6, lastDay);
+
+    if (startDay > lastDay || startDay < 1) {
+        return null;
+    }
+
+    return {
+        startDate: buildDateFromDay(startDay, monthStart, monthEnd),
+        endDate: buildDateFromDay(endDay, monthStart, monthEnd),
+    };
+}
+
+function parseTurnCount(value: string) {
+    const normalizedValue = normalizeForMatch(value);
+    const explicitNumber = normalizedValue.match(/\b(\d+)\b/);
+
+    if (explicitNumber) {
+        return Number(explicitNumber[1]);
+    }
+
+    if (/\b(um|uma)\b/.test(normalizedValue)) return 1;
+    if (/\b(dois|duas)\b/.test(normalizedValue)) return 2;
+    if (/\b(tres|três)\b/.test(normalizedValue)) return 3;
+    if (/\bquatro\b/.test(normalizedValue)) return 4;
+
+    return null;
+}
+
+function datesForWeekday(monthStart: string, monthEnd: string, weekday: number) {
+    const [year, month] = monthStart.slice(0, 7).split("-").map(Number);
+    const lastDay = Number(monthEnd.slice(8, 10));
+    const dates: string[] = [];
+
+    for (let day = 1; day <= lastDay; day += 1) {
+        const date = new Date(year, month - 1, day);
+        if (date.getDay() !== weekday) {
+            continue;
+        }
+        dates.push(buildDateFromDay(day, monthStart, monthEnd));
+    }
+
+    return dates.filter(Boolean);
 }
 
 function shiftByCode(
@@ -693,6 +789,73 @@ function parseClause(
         return suggestions;
     }
 
+    const weeklyShiftCountFirstPattern =
+        /\b(.+?)\s+turnos?\s+de\s+([a-z]\*?)\s+na\s+(.+?)\s+seman+a\b/.exec(
+            normalizedClause
+        );
+    const weeklyShiftCountSecondPattern =
+        /\bna\s+(.+?)\s+seman+a\s+(.+?)\s+turnos?\s+de\s+([a-z]\*?)\b/.exec(
+            normalizedClause
+        );
+
+    if (weeklyShiftCountFirstPattern || weeklyShiftCountSecondPattern) {
+        const turnCountText = weeklyShiftCountFirstPattern
+            ? weeklyShiftCountFirstPattern[1]
+            : (weeklyShiftCountSecondPattern?.[2] ?? "");
+        const shiftCode = weeklyShiftCountFirstPattern
+            ? weeklyShiftCountFirstPattern[2]
+            : (weeklyShiftCountSecondPattern?.[3] ?? "");
+        const weekText = weeklyShiftCountFirstPattern
+            ? weeklyShiftCountFirstPattern[3]
+            : (weeklyShiftCountSecondPattern?.[1] ?? "");
+        const turnCount = parseTurnCount(turnCountText);
+        const shiftType = shiftByAnyCode(shiftTypes, shiftCode);
+        const weekIndexes = parseWeekIndexes(weekText);
+
+        if (shiftType && weekIndexes.length > 0) {
+            for (const weekIndex of weekIndexes) {
+                const range = weekDateRange(weekIndex, monthStart, monthEnd);
+                if (!range) {
+                    continue;
+                }
+
+                suggestions.push(
+                    createSuggestion(employeeMatch, "preferred_shift", sourceText, {
+                        shift_type_id: shiftType.id,
+                        start_date: range.startDate,
+                        end_date: range.endDate,
+                        notes: turnCount
+                            ? `Objetivo: ${turnCount} turno(s) de ${shiftType.code} nesta semana.`
+                            : `Objetivo semanal de ${shiftType.code}.`,
+                    })
+                );
+            }
+        }
+
+        if (suggestions.length > 0) {
+            return suggestions;
+        }
+    }
+
+    const tuesdayIgnoreAfternoonMatch =
+        /\b(?:as\s+)?tercas?\b.*\bignorar\b.*\bpreferenc(?:ia|ias)\b.*\btardes?\b/.exec(
+            normalizedClause
+        );
+
+    if (tuesdayIgnoreAfternoonMatch && afternoonShift) {
+        for (const dateValue of datesForWeekday(monthStart, monthEnd, 2)) {
+            suggestions.push(
+                createSuggestion(employeeMatch, "avoid_shift", sourceText, {
+                    shift_type_id: afternoonShift.id,
+                    specific_date: dateValue,
+                    notes: "Ignorar preferência de tarde às terças.",
+                })
+            );
+        }
+
+        return suggestions;
+    }
+
     const dayOffSingleMatch = /\bfolga\s+dia\s+(\d{1,2})\b/.exec(
         normalizedClause
     );
@@ -806,7 +969,9 @@ function splitImportTextBlocks(
             continue;
         }
 
-        const headerMatch = /^(.{1,60}):$/.exec(trimmedLine);
+        const headerMatch =
+            /^(.{1,60}):$/.exec(trimmedLine) ??
+            /^([a-zà-ÿ][a-zà-ÿ' -]{1,59})$/i.exec(trimmedLine);
 
         if (headerMatch) {
             const employeeMatch = matchEmployeeName(headerMatch[1], employees);
@@ -1356,12 +1521,8 @@ export function ImportConstraintsDialog({
         const nextUnparsedBlocks: ImportTextParseResult["unparsedBlocks"] = [];
         const blocksNeedingAi = rulesResult.blockResults.filter(
             (blockResult) =>
-                (blockResult.suggestions.length === 0 &&
-                    hasAiActionableSignal(blockResult.block.text)) ||
-                Boolean(
-                    blockResult.unparsedText &&
-                        hasAiActionableSignal(blockResult.unparsedText)
-                ) ||
+                blockResult.suggestions.length === 0 ||
+                Boolean(blockResult.unparsedText) ||
                 blockResult.suggestions.some((suggestion) =>
                     getSuggestionIssue(suggestion, monthStart, monthEnd)
                 )
@@ -1379,8 +1540,8 @@ export function ImportConstraintsDialog({
                           nextSuggestions.length === 1
                               ? "sugestão encontrada pelo parser por regras"
                               : "sugestões encontradas pelo parser por regras"
-                      }. OpenRouter não foi chamado porque os restantes blocos não tinham sinais fortes de restrição.`
-                    : "Não encontrei pedidos mensais claros para interpretar. OpenRouter não foi chamado porque o texto restante parece contexto ou conversa social."
+                      }. OpenRouter não foi chamado porque o parser por regras já interpretou todos os blocos.`
+                    : "Não encontrei pedidos mensais claros para interpretar nem blocos pendentes para enviar ao OpenRouter."
             );
 
             return;

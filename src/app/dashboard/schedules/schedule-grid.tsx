@@ -6,6 +6,7 @@ import { useMemo, useState, useTransition } from "react";
 
 import {
     clearScheduleEntry,
+    reorderScheduleEmployees,
     upsertScheduleEntry,
 } from "@/app/dashboard/schedules/actions";
 import { Badge } from "@/components/ui/badge";
@@ -382,6 +383,8 @@ export function ScheduleGrid({
             return;
         }
 
+        let nextOrderSnapshot: string[] | null = null;
+
         setEmployeeOrder((currentOrder) => {
             const draggedIndex = currentOrder.indexOf(draggedId);
             const targetIndex = currentOrder.indexOf(targetId);
@@ -394,8 +397,30 @@ export function ScheduleGrid({
             nextOrder.splice(draggedIndex, 1);
             const nextTargetIndex = nextOrder.indexOf(targetId);
             nextOrder.splice(nextTargetIndex, 0, draggedId);
+            nextOrderSnapshot = nextOrder;
 
             return nextOrder;
+        });
+
+        if (!nextOrderSnapshot) {
+            return;
+        }
+
+        startTransition(() => {
+            void (async () => {
+                const result = await reorderScheduleEmployees({
+                    employeeIds: nextOrderSnapshot ?? [],
+                    scheduleId,
+                });
+
+                if (result.status === "error") {
+                    setErrorMessage(
+                        result.message ?? "Não consegui guardar ordem dos funcionários."
+                    );
+                } else {
+                    setErrorMessage(null);
+                }
+            })();
         });
     }
 
@@ -435,7 +460,8 @@ export function ScheduleGrid({
                                     key={day.dateValue}
                                     className={cn(
                                         "border-r p-2 text-center last:border-r-0",
-                                        day.isWeekend && "bg-muted/60",
+                                        day.isWeekend &&
+                                            "bg-slate-300/70 dark:bg-slate-700/60",
                                         day.isHoliday &&
                                             "bg-amber-100/80 text-amber-950 dark:bg-amber-900/20 dark:text-amber-100"
                                     )}
@@ -558,7 +584,8 @@ export function ScheduleGrid({
                                                 key={day.dateValue}
                                                 className={cn(
                                                     "relative flex min-h-14 items-center justify-center border-r p-1.5 text-center last:border-r-0",
-                                                    day.isWeekend && "bg-muted/20",
+                                                    day.isWeekend &&
+                                                        "bg-slate-200/70 dark:bg-slate-800/45",
                                                     day.isHoliday &&
                                                         "bg-amber-50/80 dark:bg-amber-950/20",
                                                     evaluation.hasInfo &&
@@ -636,6 +663,10 @@ export function ScheduleGrid({
                 <span className="inline-flex items-center gap-1">
                     <span className="size-2 rounded-full bg-amber-400" />
                     Feriado
+                </span>
+                <span className="inline-flex items-center gap-1">
+                    <span className="size-2 rounded-full bg-slate-400" />
+                    Fim de semana
                 </span>
                 <span className="inline-flex items-center gap-1">
                     <AlertTriangleIcon className="size-3.5 text-amber-600" />

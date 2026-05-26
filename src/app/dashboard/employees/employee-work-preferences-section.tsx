@@ -1,7 +1,7 @@
 "use client";
 
 import { PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
-import { useActionState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import {
@@ -50,6 +50,14 @@ type EmployeeWorkPreferencesSectionProps = {
     shiftTypes: ShiftType[];
 };
 
+type GroupedWorkPreference = {
+    key: string;
+    preferenceIds: string[];
+    preferences: WorkPreference[];
+    representative: WorkPreference;
+    weekdays: number[] | null;
+};
+
 const initialFormState: WorkPreferenceFormState = {
     status: "idle",
 };
@@ -94,6 +102,14 @@ function weekdayLabel(value: number | null) {
     );
 }
 
+function groupedWeekdayLabel(weekdays: number[] | null) {
+    if (weekdays === null || weekdays.length === 0) {
+        return "Todos os dias";
+    }
+
+    return weekdays.map((weekday) => weekdayLabel(weekday)).join(", ");
+}
+
 function shiftTypeLabel(shiftTypeId: string | null, shiftTypes: ShiftType[]) {
     if (!shiftTypeId) {
         return "Sem turno";
@@ -128,14 +144,22 @@ function WorkPreferenceFormFields({
     employeeId,
     fieldErrors,
     preference,
+    selectedWeekdays,
     shiftTypes,
 }: {
     employeeId: string;
     fieldErrors?: WorkPreferenceFormState["fieldErrors"];
     preference?: WorkPreference;
+    selectedWeekdays?: number[] | null;
     shiftTypes: ShiftType[];
 }) {
-    const currentType = preference?.preference_type ?? "preferred_shift";
+    const [selectedPreferenceType, setSelectedPreferenceType] = useState(
+        preference?.preference_type ?? "preferred_shift"
+    );
+    const isShiftNotApplicable =
+        selectedPreferenceType === "max_shifts_per_week" ||
+        selectedPreferenceType === "preferred_day_off" ||
+        selectedPreferenceType === "unavailable_weekday";
 
     return (
         <>
@@ -148,7 +172,8 @@ function WorkPreferenceFormFields({
                 <select
                     id={`preference-type-${preference?.id ?? "new"}`}
                     name="preference_type"
-                    defaultValue={currentType}
+                    defaultValue={selectedPreferenceType}
+                    onChange={(event) => setSelectedPreferenceType(event.target.value)}
                     className={cn(
                         "h-9 rounded-md border border-input bg-background px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
                         fieldErrors?.preferenceType && "border-destructive"
@@ -167,68 +192,98 @@ function WorkPreferenceFormFields({
                 ) : null}
             </div>
 
-            <div className="grid gap-2 sm:grid-cols-2">
-                <div className="grid gap-2">
-                    <Label htmlFor={`preference-shift-${preference?.id ?? "new"}`}>
-                        Turno (quando aplicável)
-                    </Label>
-                    <select
-                        id={`preference-shift-${preference?.id ?? "new"}`}
-                        name="shift_type_id"
-                        defaultValue={preference?.shift_type_id ?? ""}
-                        className={cn(
-                            "h-9 rounded-md border border-input bg-background px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
-                            fieldErrors?.shiftTypeId && "border-destructive"
-                        )}
-                        aria-invalid={Boolean(fieldErrors?.shiftTypeId)}
-                    >
-                        <option value="">
-                            {currentType === "max_shifts_per_week" ||
-                            currentType === "preferred_day_off" ||
-                            currentType === "unavailable_weekday"
-                                ? "Não aplicável"
-                                : "Escolher turno"}
+            <div className="grid gap-2">
+                <Label htmlFor={`preference-shift-${preference?.id ?? "new"}`}>
+                    Turno (quando aplicável)
+                </Label>
+                <select
+                    id={`preference-shift-${preference?.id ?? "new"}`}
+                    name="shift_type_id"
+                    defaultValue={preference?.shift_type_id ?? ""}
+                    disabled={isShiftNotApplicable}
+                    className={cn(
+                        "h-9 rounded-md border border-input bg-background px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60",
+                        fieldErrors?.shiftTypeId && "border-destructive"
+                    )}
+                    aria-invalid={Boolean(fieldErrors?.shiftTypeId)}
+                >
+                    <option value="">
+                        {isShiftNotApplicable
+                            ? "Não aplicável"
+                            : "Escolher turno"}
+                    </option>
+                    {shiftTypes.map((shiftType) => (
+                        <option key={shiftType.id} value={shiftType.id}>
+                            {shiftType.code} - {shiftType.name}
                         </option>
-                        {shiftTypes.map((shiftType) => (
-                            <option key={shiftType.id} value={shiftType.id}>
-                                {shiftType.code} - {shiftType.name}
-                            </option>
-                        ))}
-                    </select>
-                    {fieldErrors?.shiftTypeId ? (
-                        <p className="text-sm text-destructive">{fieldErrors.shiftTypeId}</p>
-                    ) : null}
-                </div>
+                    ))}
+                </select>
+                {fieldErrors?.shiftTypeId ? (
+                    <p className="text-sm text-destructive">{fieldErrors.shiftTypeId}</p>
+                ) : null}
+            </div>
 
-                <div className="grid gap-2">
-                    <Label htmlFor={`preference-weekday-${preference?.id ?? "new"}`}>
-                        Dia da semana (opcional)
-                    </Label>
-                    <select
-                        id={`preference-weekday-${preference?.id ?? "new"}`}
-                        name="weekday"
-                        defaultValue={
-                            preference?.weekday === null || preference?.weekday === undefined
-                                ? ""
-                                : String(preference.weekday)
-                        }
-                        className={cn(
-                            "h-9 rounded-md border border-input bg-background px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
-                            fieldErrors?.weekday && "border-destructive"
-                        )}
-                        aria-invalid={Boolean(fieldErrors?.weekday)}
-                    >
-                        <option value="">Todos os dias</option>
-                        {weekdayOptions.map((option) => (
-                            <option key={option.value} value={option.value}>
-                                {option.label}
-                            </option>
-                        ))}
-                    </select>
-                    {fieldErrors?.weekday ? (
-                        <p className="text-sm text-destructive">{fieldErrors.weekday}</p>
-                    ) : null}
-                </div>
+            <div className="grid gap-2">
+                <Label>Dias da semana (opcional)</Label>
+                <details
+                    className={cn(
+                        "group rounded-md border border-input bg-background px-3 py-2 text-sm",
+                        fieldErrors?.weekday && "border-destructive"
+                    )}
+                    aria-invalid={Boolean(fieldErrors?.weekday)}
+                >
+                    <summary className="cursor-pointer list-none select-none font-medium">
+                        Selecionar dias da semana
+                    </summary>
+                    <div className="mt-3 grid gap-2 border-t pt-3">
+                        <Label className="flex items-center gap-2 text-sm font-normal">
+                            <input
+                                type="checkbox"
+                                name="weekday_values"
+                                value="all"
+                                defaultChecked={
+                                    selectedWeekdays === null ||
+                                    (selectedWeekdays === undefined &&
+                                        (preference?.weekday === null ||
+                                            preference?.weekday === undefined))
+                                }
+                                className="size-4 rounded border-input accent-foreground"
+                            />
+                            Todos os dias
+                        </Label>
+                        <div className="grid gap-1 sm:grid-cols-2">
+                            {weekdayOptions.map((option) => (
+                                <Label
+                                    key={option.value}
+                                    className="flex items-center gap-2 text-sm font-normal"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        name="weekday_values"
+                                        value={option.value}
+                                        defaultChecked={
+                                            selectedWeekdays
+                                                ? selectedWeekdays.includes(
+                                                      Number(option.value)
+                                                  )
+                                                : preference?.weekday !== null &&
+                                                  preference?.weekday !== undefined &&
+                                                  String(preference.weekday) === option.value
+                                        }
+                                        className="size-4 rounded border-input accent-foreground"
+                                    />
+                                    {option.label}
+                                </Label>
+                            ))}
+                        </div>
+                    </div>
+                </details>
+                {fieldErrors?.weekday ? (
+                    <p className="text-sm text-destructive">{fieldErrors.weekday}</p>
+                ) : null}
+                <p className="text-xs text-muted-foreground">
+                    Se escolheres dias específicos, "Todos os dias" é ignorado.
+                </p>
             </div>
 
             <div className="grid gap-2">
@@ -240,7 +295,7 @@ function WorkPreferenceFormFields({
                     name="notes"
                     defaultValue={preference?.notes ?? ""}
                     placeholder={
-                        currentType === "max_shifts_per_week"
+                        selectedPreferenceType === "max_shifts_per_week"
                             ? "Ex: máximo 4 por semana"
                             : "Ex: Prefere tardes"
                     }
@@ -337,11 +392,15 @@ function NewWorkPreferenceDialog({
 
 function WorkPreferenceRowActions({
     employeeId,
+    groupedWeekdays,
     preference,
+    preferenceIds,
     shiftTypes,
 }: {
     employeeId: string;
+    groupedWeekdays: number[] | null;
     preference: WorkPreference;
+    preferenceIds: string[];
     shiftTypes: ShiftType[];
 }) {
     const [updateState, updateAction] = useActionState(
@@ -385,10 +444,19 @@ function WorkPreferenceRowActions({
                     ) : (
                         <form action={updateAction} className="grid gap-4">
                             <input type="hidden" name="id" value={preference.id} />
+                            {preferenceIds.map((preferenceId) => (
+                                <input
+                                    key={preferenceId}
+                                    type="hidden"
+                                    name="preference_ids"
+                                    value={preferenceId}
+                                />
+                            ))}
                             <WorkPreferenceFormFields
                                 employeeId={employeeId}
                                 fieldErrors={updateDialog.visibleState.fieldErrors}
                                 preference={preference}
+                                selectedWeekdays={groupedWeekdays}
                                 shiftTypes={shiftTypes}
                             />
 
@@ -441,6 +509,14 @@ function WorkPreferenceRowActions({
                         <form action={deleteAction} className="grid gap-4">
                             <input type="hidden" name="id" value={preference.id} />
                             <input type="hidden" name="employee_id" value={employeeId} />
+                            {preferenceIds.map((preferenceId) => (
+                                <input
+                                    key={preferenceId}
+                                    type="hidden"
+                                    name="preference_ids"
+                                    value={preferenceId}
+                                />
+                            ))}
                             {deleteDialog.visibleState.message ? (
                                 <p className="text-sm text-destructive">
                                     {deleteDialog.visibleState.message}
@@ -469,6 +545,60 @@ export function EmployeeWorkPreferencesSection({
     preferences,
     shiftTypes,
 }: EmployeeWorkPreferencesSectionProps) {
+    const groupedPreferences = useMemo(() => {
+        const grouped = new Map<string, GroupedWorkPreference>();
+
+        for (const preference of preferences) {
+            const normalizedNotes = (preference.notes ?? "").trim();
+            const key = [
+                preference.preference_type,
+                preference.shift_type_id ?? "",
+                preference.active ? "active" : "inactive",
+                normalizedNotes,
+            ].join("|");
+            const existing = grouped.get(key);
+
+            if (!existing) {
+                grouped.set(key, {
+                    key,
+                    preferenceIds: [preference.id],
+                    preferences: [preference],
+                    representative: preference,
+                    weekdays:
+                        preference.weekday === null || preference.weekday === undefined
+                            ? null
+                            : [preference.weekday],
+                });
+                continue;
+            }
+
+            existing.preferenceIds.push(preference.id);
+            existing.preferences.push(preference);
+            if (existing.weekdays !== null) {
+                if (preference.weekday === null || preference.weekday === undefined) {
+                    existing.weekdays = null;
+                } else if (!existing.weekdays.includes(preference.weekday)) {
+                    existing.weekdays.push(preference.weekday);
+                }
+            }
+        }
+
+        return [...grouped.values()]
+            .map((group) => ({
+                ...group,
+                weekdays:
+                    group.weekdays === null
+                        ? null
+                        : [...group.weekdays].sort((a, b) => a - b),
+            }))
+            .sort((first, second) =>
+                preferenceTypeLabel(first.representative.preference_type).localeCompare(
+                    preferenceTypeLabel(second.representative.preference_type),
+                    "pt-PT"
+                )
+            );
+    }, [preferences]);
+
     return (
         <section className="rounded-lg border bg-card p-4 shadow-xs">
             <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -505,43 +635,59 @@ export function EmployeeWorkPreferencesSection({
                 </p>
             </div>
 
-            {preferences.length === 0 ? (
+            {groupedPreferences.length === 0 ? (
                 <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
                     Ainda não existem preferências fixas para este funcionário.
                 </div>
             ) : (
                 <div className="grid gap-2">
-                    {preferences.map((preference) => (
+                    {groupedPreferences.map((group) => (
                         <div
-                            key={preference.id}
+                            key={group.key}
                             className="flex flex-col gap-3 rounded-md border bg-background p-3 sm:flex-row sm:items-start sm:justify-between"
                         >
                             <div className="grid gap-2">
                                 <div className="flex flex-wrap items-center gap-2">
                                     <Badge variant="secondary">
-                                        {preferenceTypeLabel(preference.preference_type)}
+                                        {preferenceTypeLabel(
+                                            group.representative.preference_type
+                                        )}
                                     </Badge>
                                     <Badge variant="outline">
-                                        {shiftTypeLabel(preference.shift_type_id, shiftTypes)}
+                                        {shiftTypeLabel(
+                                            group.representative.shift_type_id,
+                                            shiftTypes
+                                        )}
                                     </Badge>
                                     <Badge variant="outline">
-                                        {weekdayLabel(preference.weekday)}
+                                        {groupedWeekdayLabel(group.weekdays)}
                                     </Badge>
                                     <Badge
-                                        variant={preference.active ? "secondary" : "outline"}
+                                        variant={
+                                            group.representative.active
+                                                ? "secondary"
+                                                : "outline"
+                                        }
                                     >
-                                        {preference.active ? "Ativa" : "Inativa"}
+                                        {group.representative.active ? "Ativa" : "Inativa"}
                                     </Badge>
+                                    {group.preferenceIds.length > 1 ? (
+                                        <Badge variant="outline">
+                                            {group.preferenceIds.length} dias agrupados
+                                        </Badge>
+                                    ) : null}
                                 </div>
-                                {preference.notes ? (
+                                {group.representative.notes ? (
                                     <p className="text-sm text-muted-foreground">
-                                        {preference.notes}
+                                        {group.representative.notes}
                                     </p>
                                 ) : null}
                             </div>
                             <WorkPreferenceRowActions
                                 employeeId={employeeId}
-                                preference={preference}
+                                groupedWeekdays={group.weekdays}
+                                preference={group.representative}
+                                preferenceIds={group.preferenceIds}
                                 shiftTypes={shiftTypes}
                             />
                         </div>

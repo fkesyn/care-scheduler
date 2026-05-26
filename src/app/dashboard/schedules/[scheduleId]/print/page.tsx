@@ -24,7 +24,6 @@ type Relation<T> = T | T[] | null;
 type MonthlySchedule = {
     id: string;
     month: string;
-    status: string;
     organization_id: string;
     locations: Relation<{
         id: string;
@@ -35,6 +34,7 @@ type MonthlySchedule = {
 type Employee = {
     id: string;
     name: string;
+    display_order?: number | null;
 };
 
 type ShiftType = {
@@ -124,7 +124,6 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
             `
         id,
         month,
-        status,
         organization_id,
         locations (
           id,
@@ -159,8 +158,9 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
     ] = await Promise.all([
         supabase
             .from("employees")
-            .select("id, name")
+            .select("id, name, display_order")
             .eq("active", true)
+            .order("display_order")
             .order("name"),
         supabase.from("shift_types").select("id, code, name").order("display_order"),
         supabase
@@ -255,7 +255,7 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
         ) ?? null;
 
     return (
-        <div className="print-page p-4">
+        <div className="print-page p-2">
             <PrintControls />
             <div className="print-controls mb-4">
                 <Link href={`/dashboard/schedules/${schedule.id}`} className="text-sm underline">
@@ -284,12 +284,7 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
                         <p className="line strong">Escala de Enfermeiro de Serviço</p>
                         <p className="line">Equipa Enfermagem</p>
                         <p className="line small">
-                            {location?.name ?? "Geral / todos os locais"} · Estado:{" "}
-                            {schedule.status === "published"
-                                ? "Publicado"
-                                : schedule.status === "archived"
-                                  ? "Arquivado"
-                                  : "Rascunho"}
+                            {location?.name ?? "Geral / todos os locais"}
                         </p>
                     </div>
                 </header>
@@ -386,12 +381,12 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
                                 <tr>
                                     <td className="code">T</td>
                                     <td>Tarde (13h00-20h00)</td>
-                                    <td className="code">FF</td>
-                                    <td>Folga em Falta (Compensação Feriado)</td>
-                                </tr>
-                                <tr>
                                     <td className="code">E</td>
                                     <td>Turno 10h00-17h00</td>
+                                </tr>
+                                <tr>
+                                    <td className="code">MT</td>
+                                    <td>Manhã + Tarde (fim de semana)</td>
                                     <td className="code">E*</td>
                                     <td>Turno de gestão enfermagem</td>
                                 </tr>
@@ -404,6 +399,10 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
                                 <tr>
                                     <td className="code">FA</td>
                                     <td>Folga Aniversário</td>
+                                    <td className="code">FF</td>
+                                    <td>Folga em Falta (Compensação Feriado)</td>
+                                </tr>
+                                <tr>
                                     <td className="code">F</td>
                                     <td>Folga</td>
                                 </tr>
@@ -432,10 +431,17 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
             <style>{`
                 @page {
                     size: A4 landscape;
-                    margin: 8mm;
+                    margin: 4mm;
+                }
+
+                .print-page {
+                    width: 100%;
+                    max-width: none;
+                    margin: 0;
                 }
 
                 .print-sheet {
+                    width: 100%;
                     font-size: 10px;
                     color: #111827;
                     font-family: "Times New Roman", Times, serif;
@@ -507,8 +513,8 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
                 .schedule-table td {
                     border: 1px solid #1f2937;
                     text-align: center;
-                    padding: 1px;
-                    height: 16px;
+                    padding: 2px 1px;
+                    height:50px;
                     line-height: 1;
                 }
 
@@ -520,17 +526,18 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
                 }
 
                 .schedule-table .section-title {
-                    font-size: 10px;
+                    font-size: 15px;
                     font-weight: 700;
                 }
 
                 .schedule-table .month-title {
-                    font-size: 14px;
+                    font-size: 20px;
                     font-weight: 700;
                     background: #f3f4f6;
                 }
 
                 .schedule-table .employee-name {
+                    font-size: 15px;
                     line-height: 1.2;
                 }
 
@@ -541,12 +548,12 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
                 }
 
                 .schedule-table .day-col {
-                    font-size: 11px;
+                    font-size: 15px;
                     font-weight: 700;
                 }
 
                 .schedule-table .holiday-name {
-                    font-size: 7px;
+                    font-size: 8px;
                     margin-top: 1px;
                     color: #92400e;
                 }
@@ -560,17 +567,18 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
                 }
 
                 .print-code {
+                    font-size: 15px;
                     display: inline-block;
                     min-width: 10px;
                 }
 
                 .print-code-medication {
                     font-weight: 800;
-                    font-size: 10px;
+                    font-size: 18px;
                 }
 
                 .footer-separator {
-                    margin: 26px 0 10px;
+                    margin: 16px 0 10px;
                     border-top: 2px solid #111827;
                 }
 
@@ -584,7 +592,7 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
                 .legend-box,
                 .notes-box {
                     border: 1px solid #9ca3af;
-                    font-size: 9px;
+                    font-size: 15px;
                 }
 
                 .legend-title,
@@ -641,16 +649,35 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
                 }
 
                 @media print {
+                    * {
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
+                    }
+
+                    main > .border-b.bg-card {
+                        display: none !important;
+                    }
+
                     .print-controls {
                         display: none !important;
                     }
 
                     body {
                         background: white !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
                     }
 
                     .print-page {
                         padding: 0 !important;
+                    }
+
+                    .schedule-table .weekend:not(.holiday) {
+                        background: #d1d5db !important;
+                    }
+
+                    .schedule-table .holiday {
+                        background: #f7e6a3 !important;
                     }
                 }
             `}</style>

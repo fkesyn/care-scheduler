@@ -3,17 +3,19 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { FileDownIcon } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { getHolidayForDateFromList } from "@/lib/holidays/get-holiday-for-date";
 import { buildStaticPortugueseHolidays } from "@/lib/holidays/static-portuguese-holidays";
 import { syncPortugueseHolidays } from "@/lib/holidays/sync-portuguese-holidays";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
+import { ClearScheduleGridDialog } from "../clear-schedule-grid-dialog";
 import { GenerateScheduleDialog } from "../generate-schedule-dialog";
 import { GenerationWarningsSection } from "../generation-warnings-section";
-import { PublishScheduleDialog } from "../publish-schedule-dialog";
+import { ImportConstraintsDialog } from "../import-constraints-dialog";
 import {
+    ClearConstraintsDialog,
+    NewConstraintDialog,
     ScheduleConstraintsSection,
     type ScheduleConstraintEmployee,
     type ScheduleConstraintRow,
@@ -44,7 +46,6 @@ type MonthlySchedule = {
     id: string;
     location_id: string | null;
     month: string;
-    status: string;
     created_at: string | null;
     updated_at: string | null;
     locations: Relation<Location>;
@@ -55,6 +56,7 @@ type Employee = {
     name: string;
     role: string;
     active: boolean | null;
+    display_order?: number | null;
 };
 
 type ShiftType = {
@@ -116,30 +118,6 @@ function firstRelation<T>(relation: Relation<T>) {
     return relation;
 }
 
-function statusLabel(status: string) {
-    if (status === "published") {
-        return "Publicado";
-    }
-
-    if (status === "archived") {
-        return "Arquivado";
-    }
-
-    return "Rascunho";
-}
-
-function statusVariant(status: string) {
-    if (status === "published") {
-        return "secondary" as const;
-    }
-
-    if (status === "archived") {
-        return "outline" as const;
-    }
-
-    return "default" as const;
-}
-
 function formatMonthLabel(monthValue: string) {
     const [year, month] = monthValue.slice(0, 7).split("-").map(Number);
 
@@ -196,7 +174,6 @@ export default async function ScheduleDetailPage({
         id,
         location_id,
         month,
-        status,
         created_at,
         updated_at,
         locations (
@@ -249,8 +226,9 @@ export default async function ScheduleDetailPage({
     ] = await Promise.all([
         supabase
             .from("employees")
-            .select("id, name, role, active")
+            .select("id, name, role, active, display_order")
             .eq("active", true)
+            .order("display_order")
             .order("name"),
         supabase
             .from("shift_types")
@@ -443,14 +421,9 @@ export default async function ScheduleDetailPage({
             <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
                 <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="flex flex-col gap-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                            <h1 className="text-2xl font-semibold tracking-tight capitalize">
-                                {formatMonthLabel(schedule.month)}
-                            </h1>
-                            <Badge variant={statusVariant(schedule.status)}>
-                                {statusLabel(schedule.status)}
-                            </Badge>
-                        </div>
+                        <h1 className="text-2xl font-semibold tracking-tight capitalize">
+                            {formatMonthLabel(schedule.month)}
+                        </h1>
                         <p className="text-sm text-muted-foreground">
                             {location?.name ?? "Geral / todos os locais"} ·{" "}
                             {employeeRows.length}{" "}
@@ -464,21 +437,6 @@ export default async function ScheduleDetailPage({
                                 Voltar à lista
                             </Link>
                         </Button>
-                        <Button asChild variant="outline">
-                            <Link
-                                href={`/dashboard/schedules/${schedule.id}/print`}
-                                target="_blank"
-                                rel="noreferrer"
-                            >
-                                <FileDownIcon />
-                                Exportar PDF
-                            </Link>
-                        </Button>
-                        <PublishScheduleDialog
-                            scheduleId={schedule.id}
-                            status={schedule.status}
-                        />
-                        <GenerateScheduleDialog scheduleId={schedule.id} />
                     </div>
                 </header>
 
@@ -529,12 +487,59 @@ export default async function ScheduleDetailPage({
                     shiftTypes={gridShiftTypes}
                 />
 
+                <section className="rounded-lg border bg-card p-4 shadow-xs">
+                    <div className="grid gap-3">
+                        <div className="flex flex-wrap gap-2">
+                            <GenerateScheduleDialog scheduleId={schedule.id} />
+                            <Button asChild variant="outline">
+                                <Link
+                                    href={`/dashboard/schedules/${schedule.id}/print`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                >
+                                    <FileDownIcon />
+                                    Exportar PDF
+                                </Link>
+                            </Button>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                            <NewConstraintDialog
+                                employees={constraintEmployees}
+                                monthEnd={endValue}
+                                monthStart={startValue}
+                                scheduleId={schedule.id}
+                                shiftTypes={constraintShiftTypes}
+                            />
+                            <ImportConstraintsDialog
+                                employees={constraintEmployees}
+                                monthEnd={endValue}
+                                monthStart={startValue}
+                                scheduleId={schedule.id}
+                                shiftTypes={constraintShiftTypes}
+                            />
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                            <ClearConstraintsDialog
+                                constraintsCount={constraintRows.length}
+                                scheduleId={schedule.id}
+                            />
+                            <ClearScheduleGridDialog
+                                entriesCount={entryRows.length}
+                                scheduleId={schedule.id}
+                            />
+                        </div>
+                    </div>
+                </section>
+
                 <ScheduleConstraintsSection
                     constraints={constraintRows}
                     employees={constraintEmployees}
                     monthEnd={endValue}
                     monthStart={startValue}
                     scheduleId={schedule.id}
+                    showHeaderActions={false}
                     shiftTypes={constraintShiftTypes}
                 />
             </div>

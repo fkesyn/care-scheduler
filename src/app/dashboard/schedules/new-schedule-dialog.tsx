@@ -1,8 +1,8 @@
 "use client";
 
 import { CalendarPlusIcon } from "lucide-react";
-import Link from "next/link";
-import { useActionState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import {
@@ -31,12 +31,27 @@ type LocationOption = {
 
 type NewScheduleDialogProps = {
     defaultMonth: string;
+    defaultLocationId: string | null;
     locations: LocationOption[];
 };
+
+const ENABLE_LOCATION_SELECTION = false;
 
 const initialState: ScheduleFormState = {
     status: "idle",
 };
+
+function shiftMonth(monthValue: string, offset: number) {
+    if (!/^\d{4}-\d{2}$/.test(monthValue)) {
+        return monthValue;
+    }
+
+    const [year, month] = monthValue.split("-").map(Number);
+    const date = new Date(year, month - 1, 1);
+    date.setMonth(date.getMonth() + offset);
+
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
 
 function SubmitButton() {
     const { pending } = useFormStatus();
@@ -50,21 +65,58 @@ function SubmitButton() {
 
 export function NewScheduleDialog({
     defaultMonth,
+    defaultLocationId,
     locations,
 }: NewScheduleDialogProps) {
+    const router = useRouter();
+    const [selectedMonth, setSelectedMonth] = useState(defaultMonth);
     const [state, formAction] = useActionState(
         createMonthlySchedule,
         initialState
     );
-    const { closeDialog, open, setOpen, showFormAgain, visibleState } =
-        useActionDialog(state, initialState);
+    const { closeDialog, open, setOpen, visibleState } = useActionDialog(
+        state,
+        initialState
+    );
     const formRef = useRef<HTMLFormElement>(null);
+    const monthInputRef = useRef<HTMLInputElement>(null);
+
+    function openMonthPicker() {
+        const input = monthInputRef.current;
+        if (!input) {
+            return;
+        }
+
+        const pickerInput = input as HTMLInputElement & {
+            showPicker?: () => void;
+        };
+
+        if (typeof pickerInput.showPicker === "function") {
+            pickerInput.showPicker();
+            return;
+        }
+
+        input.focus();
+        input.click();
+    }
 
     useEffect(() => {
         if (visibleState.status === "success") {
+            if (visibleState.scheduleId) {
+                setOpen(false);
+                router.push(`/dashboard/schedules/${visibleState.scheduleId}`);
+                return;
+            }
+
             formRef.current?.reset();
         }
-    }, [visibleState.status]);
+    }, [router, setOpen, visibleState.scheduleId, visibleState.status]);
+
+    useEffect(() => {
+        if (!open) {
+            setSelectedMonth(defaultMonth);
+        }
+    }, [defaultMonth, open]);
 
     return (
         <Dialog open={open} onOpenChange={setOpen}>
@@ -78,67 +130,72 @@ export function NewScheduleDialog({
                 <DialogHeader>
                     <DialogTitle>Novo horário mensal</DialogTitle>
                     <DialogDescription>
-                        Cria um rascunho mensal para a equipa.
+                        Cria um horário mensal para a equipa.
                     </DialogDescription>
                 </DialogHeader>
 
-                {visibleState.status === "success" ? (
-                    <div className="grid gap-4">
-                        <p
-                            className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/40 dark:text-emerald-100"
-                            role="status"
-                        >
-                            {visibleState.message ?? "Horário mensal criado."}
-                        </p>
-                        <DialogFooter className="flex-wrap">
-                            <Button type="button" variant="outline" onClick={showFormAgain}>
-                                Criar outro horário
+                <form ref={formRef} action={formAction} className="grid gap-4">
+                    <div className="grid gap-2">
+                        <Label htmlFor="schedule-month">Mês</Label>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                    setSelectedMonth((current) => shiftMonth(current, -1))
+                                }
+                                aria-label="Mês anterior"
+                            >
+                                ←
                             </Button>
-                            {visibleState.scheduleId ? (
-                                <Button asChild variant="secondary">
-                                    <Link href={`/dashboard/schedules/${visibleState.scheduleId}`}>
-                                        Abrir horário
-                                    </Link>
-                                </Button>
-                            ) : null}
-                            <Button type="button" onClick={closeDialog}>
-                                Fechar
-                            </Button>
-                        </DialogFooter>
-                    </div>
-                ) : (
-                    <form ref={formRef} action={formAction} className="grid gap-4">
-                        <div className="grid gap-2">
-                            <Label htmlFor="schedule-month">Mês</Label>
                             <Input
                                 id="schedule-month"
                                 name="month"
                                 type="month"
-                                defaultValue={defaultMonth}
+                                ref={monthInputRef}
+                                value={selectedMonth}
+                                onChange={(event) =>
+                                    setSelectedMonth(event.target.value)
+                                }
+                                onClick={openMonthPicker}
+                                lang="pt-PT"
                                 aria-invalid={Boolean(visibleState.fieldErrors?.month)}
                                 required
                             />
-                            {visibleState.fieldErrors?.month ? (
-                                <p className="text-sm text-destructive">
-                                    {visibleState.fieldErrors.month}
-                                </p>
-                            ) : null}
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                    setSelectedMonth((current) => shiftMonth(current, 1))
+                                }
+                                aria-label="Mês seguinte"
+                            >
+                                →
+                            </Button>
                         </div>
+                        {visibleState.fieldErrors?.month ? (
+                            <p className="text-sm text-destructive">
+                                {visibleState.fieldErrors.month}
+                            </p>
+                        ) : null}
+                    </div>
 
+                    {/* Keep location selection code ready for future reactivation. */}
+                    {ENABLE_LOCATION_SELECTION ? (
                         <div className="grid gap-2">
                             <Label htmlFor="schedule-location">Local</Label>
                             <select
                                 id="schedule-location"
                                 name="location_id"
-                                defaultValue=""
+                                defaultValue={defaultLocationId ?? ""}
                                 className={cn(
                                     "h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
                                     visibleState.fieldErrors?.locationId &&
                                         "border-destructive ring-3 ring-destructive/20"
                                 )}
-                                aria-invalid={Boolean(
-                                    visibleState.fieldErrors?.locationId
-                                )}
+                                aria-invalid={Boolean(visibleState.fieldErrors?.locationId)}
                             >
                                 <option value="">Geral / todos os locais</option>
                                 {locations.map((location) => (
@@ -153,29 +210,40 @@ export function NewScheduleDialog({
                                 </p>
                             ) : null}
                         </div>
-
-                        {visibleState.message ? (
-                            <p
-                                className={cn(
-                                    "text-sm",
-                                    visibleState.status === "error"
-                                        ? "text-destructive"
-                                        : "text-muted-foreground"
-                                )}
-                                role={visibleState.status === "error" ? "alert" : "status"}
-                            >
-                                {visibleState.message}
+                    ) : (
+                        <>
+                            <input
+                                type="hidden"
+                                name="location_id"
+                                value={defaultLocationId ?? ""}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Local aplicado automaticamente: São Francisco.
                             </p>
-                        ) : null}
+                        </>
+                    )}
 
-                        <DialogFooter>
-                            <Button type="button" variant="outline" onClick={closeDialog}>
-                                Cancelar
-                            </Button>
-                            <SubmitButton />
-                        </DialogFooter>
-                    </form>
-                )}
+                    {visibleState.message ? (
+                        <p
+                            className={cn(
+                                "text-sm",
+                                visibleState.status === "error"
+                                    ? "text-destructive"
+                                    : "text-muted-foreground"
+                            )}
+                            role={visibleState.status === "error" ? "alert" : "status"}
+                        >
+                            {visibleState.message}
+                        </p>
+                    ) : null}
+
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={closeDialog}>
+                            Cancelar
+                        </Button>
+                        <SubmitButton />
+                    </DialogFooter>
+                </form>
             </DialogContent>
         </Dialog>
     );

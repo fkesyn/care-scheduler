@@ -1,12 +1,11 @@
 "use client";
 
-import { WandSparklesIcon } from "lucide-react";
+import { EraserIcon } from "lucide-react";
 import { useActionState } from "react";
-import { useFormStatus } from "react-dom";
 
 import {
-    generateMonthlySchedule,
-    type GenerateMonthlyScheduleState,
+    clearScheduleGrid,
+    type ClearScheduleGridState,
 } from "@/app/dashboard/schedules/actions";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,29 +19,20 @@ import {
 } from "@/components/ui/dialog";
 import { useActionDialog } from "@/lib/use-action-dialog";
 
-type GenerateScheduleDialogProps = {
-    scheduleId: string;
-};
-
-const initialState: GenerateMonthlyScheduleState = {
+const initialState: ClearScheduleGridState = {
     status: "idle",
 };
 
-function GenerateButton() {
-    const { pending } = useFormStatus();
+type ClearScheduleGridDialogProps = {
+    entriesCount: number;
+    scheduleId: string;
+};
 
-    return (
-        <Button type="submit" disabled={pending}>
-            {pending ? "A gerar..." : "Sim, gerar automaticamente"}
-        </Button>
-    );
-}
-
-export function GenerateScheduleDialog({ scheduleId }: GenerateScheduleDialogProps) {
-    const [state, formAction] = useActionState(
-        generateMonthlySchedule,
-        initialState
-    );
+export function ClearScheduleGridDialog({
+    entriesCount,
+    scheduleId,
+}: ClearScheduleGridDialogProps) {
+    const [state, formAction] = useActionState(clearScheduleGrid, initialState);
     const { closeDialog, open, setOpen, visibleState } = useActionDialog(
         state,
         initialState
@@ -51,26 +41,23 @@ export function GenerateScheduleDialog({ scheduleId }: GenerateScheduleDialogPro
     return (
         <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger asChild>
-                <Button>
-                    <WandSparklesIcon />
-                    Gerar horário automático
+                <Button variant="destructive" disabled={entriesCount === 0}>
+                    <EraserIcon />
+                    Limpar horário
                 </Button>
             </DialogTrigger>
             <DialogContent>
                 <DialogHeader>
-                    <DialogTitle>Gerar horário automático</DialogTitle>
+                    <DialogTitle>Limpar horário</DialogTitle>
                     <DialogDescription>
-                        Isto vai substituir os turnos atuais deste horário. Queres
-                        continuar?
+                        Esta ação remove todos os turnos da grelha deste mês. Os
+                        pedidos/restrições ficam guardados.
                     </DialogDescription>
                 </DialogHeader>
 
                 {visibleState.status === "success" ? (
                     <div className="grid gap-4">
-                        <p
-                            className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/40 dark:text-emerald-100"
-                            role="status"
-                        >
+                        <p className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/40 dark:text-emerald-100">
                             {visibleState.message}
                         </p>
                         <DialogFooter>
@@ -82,6 +69,14 @@ export function GenerateScheduleDialog({ scheduleId }: GenerateScheduleDialogPro
                 ) : (
                     <form action={formAction} className="grid gap-4">
                         <input type="hidden" name="schedule_id" value={scheduleId} />
+                        <p className="text-sm text-muted-foreground">
+                            Vais limpar{" "}
+                            <strong>
+                                {entriesCount}{" "}
+                                {entriesCount === 1 ? "célula" : "células"}
+                            </strong>{" "}
+                            da grelha.
+                        </p>
 
                         {visibleState.status === "error" && visibleState.message ? (
                             <p className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
@@ -93,7 +88,9 @@ export function GenerateScheduleDialog({ scheduleId }: GenerateScheduleDialogPro
                             <Button type="button" variant="outline" onClick={closeDialog}>
                                 Cancelar
                             </Button>
-                            <GenerateButton />
+                            <Button type="submit" variant="destructive">
+                                Confirmar limpeza
+                            </Button>
                         </DialogFooter>
                     </form>
                 )}

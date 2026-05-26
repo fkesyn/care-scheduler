@@ -140,10 +140,10 @@ export function GenerationWarningsSection({ warnings }: GenerationWarningsSectio
                 <div className="flex flex-col gap-1">
                     <h2 className="flex items-center gap-2 font-medium text-amber-950 dark:text-amber-100">
                         <AlertTriangleIcon className="size-4" />
-                        Avisos do rascunho
+                        Avisos da geração
                     </h2>
                     <p className="text-xs text-amber-800 dark:text-amber-200/80">
-                        {unresolvedCount} por resolver. Revê estes pontos antes de publicar.
+                        {unresolvedCount} por resolver. Revê estes pontos após gerar o horário.
                     </p>
                 </div>
                 <Button

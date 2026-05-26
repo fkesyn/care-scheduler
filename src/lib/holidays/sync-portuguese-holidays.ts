@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { fetchPortugueseHolidays } from "@/lib/holidays/fetch-portuguese-holidays";
+import { buildStaticPortugueseHolidays } from "@/lib/holidays/static-portuguese-holidays";
 
 type SyncHolidayRow = {
     id: string;
@@ -27,34 +28,7 @@ function manualRegionalHolidays(year: number) {
             country_code: "PT",
             region: "porto",
         },
-        {
-            holiday_date: `${yearValue}-06-29`,
-            name: "São Pedro",
-            country_code: "PT",
-            region: "povoa",
-        },
     ];
-}
-
-function fallbackNationalPortugueseHolidays(year: number) {
-    const yearValue = String(year);
-
-    return [
-        { holiday_date: `${yearValue}-01-01`, name: "Ano Novo" },
-        { holiday_date: `${yearValue}-04-25`, name: "Dia da Liberdade" },
-        { holiday_date: `${yearValue}-05-01`, name: "Dia do Trabalhador" },
-        { holiday_date: `${yearValue}-06-10`, name: "Dia de Portugal" },
-        { holiday_date: `${yearValue}-08-15`, name: "Assunção de Nossa Senhora" },
-        { holiday_date: `${yearValue}-10-05`, name: "Implantação da República" },
-        { holiday_date: `${yearValue}-11-01`, name: "Dia de Todos os Santos" },
-        { holiday_date: `${yearValue}-12-01`, name: "Restauração da Independência" },
-        { holiday_date: `${yearValue}-12-08`, name: "Imaculada Conceição" },
-        { holiday_date: `${yearValue}-12-25`, name: "Natal" },
-    ].map((holiday) => ({
-        ...holiday,
-        country_code: "PT",
-        region: null as string | null,
-    }));
 }
 
 export async function syncPortugueseHolidays(
@@ -82,7 +56,7 @@ export async function syncPortugueseHolidays(
     }
     const desiredRows = [
         ...(apiFailed
-            ? fallbackNationalPortugueseHolidays(year)
+            ? buildStaticPortugueseHolidays(year).filter((holiday) => !holiday.region)
             : apiHolidays.map((holiday) => ({
                   holiday_date: holiday.holidayDate,
                   name: holiday.name,

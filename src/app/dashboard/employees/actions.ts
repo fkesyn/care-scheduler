@@ -146,6 +146,68 @@ function normalizeWeekday(value: string) {
     return parsed;
 }
 
+function parseWeekdayValues(formData: FormData) {
+    const rawValues = formData
+        .getAll("weekday_values")
+        .map((value) => String(value ?? "").trim())
+        .filter(Boolean);
+
+    const includesAllDays = rawValues.includes("all");
+    if (includesAllDays && rawValues.length === 1) {
+        return { weekdays: null as number[] | null, error: null as string | null };
+    }
+
+    const specificDayValues = rawValues.filter((value) => value !== "all");
+
+    if (specificDayValues.length === 0) {
+        const legacyWeekdayInput = String(formData.get("weekday") ?? "").trim();
+        if (!legacyWeekdayInput) {
+            return { weekdays: null as number[] | null, error: null as string | null };
+        }
+
+        const legacyWeekday = normalizeWeekday(legacyWeekdayInput);
+        if (legacyWeekday === null) {
+            return {
+                weekdays: null as number[] | null,
+                error: "Escolhe um dia da semana válido.",
+            };
+        }
+
+        return { weekdays: [legacyWeekday], error: null as string | null };
+    }
+
+    const weekdays = [...new Set(specificDayValues.map((value) => Number(value)))];
+    const hasInvalidValue = weekdays.some(
+        (weekday) => !Number.isInteger(weekday) || weekday < 0 || weekday > 6
+    );
+
+    if (hasInvalidValue) {
+        return {
+            weekdays: null as number[] | null,
+            error: "Escolhe um dia da semana válido.",
+        };
+    }
+
+    return { weekdays: weekdays.sort((a, b) => a - b), error: null as string | null };
+}
+
+function parsePreferenceIds(formData: FormData, fallbackId?: string) {
+    const fromForm = formData
+        .getAll("preference_ids")
+        .map((value) => String(value ?? "").trim())
+        .filter(Boolean);
+
+    if (fromForm.length > 0) {
+        return [...new Set(fromForm)];
+    }
+
+    if (fallbackId && uuidPattern.test(fallbackId)) {
+        return [fallbackId];
+    }
+
+    return [];
+}
+
 export async function createEmployee(
     _previousState: CreateEmployeeState,
     formData: FormData
@@ -356,7 +418,6 @@ export async function createEmployeeWorkPreference(
     const employeeId = String(formData.get("employee_id") ?? "").trim();
     const preferenceType = String(formData.get("preference_type") ?? "").trim();
     const shiftTypeId = String(formData.get("shift_type_id") ?? "").trim();
-    const weekdayInput = String(formData.get("weekday") ?? "").trim();
     const notes = String(formData.get("notes") ?? "").trim();
     const active = formData.get("active") === "on";
     const fieldErrors: WorkPreferenceFormState["fieldErrors"] = {};
@@ -380,18 +441,9 @@ export async function createEmployeeWorkPreference(
         fieldErrors.shiftTypeId = "Este tipo não permite turno.";
     }
 
-    const weekday = normalizeWeekday(weekdayInput);
-    if (weekdayInput && weekday === null) {
-        fieldErrors.weekday = "Escolhe um dia da semana válido.";
-    }
-
-    if (
-        preferenceType === "unavailable_weekday" &&
-        weekday === null &&
-        !fieldErrors.weekday
-    ) {
-        fieldErrors.weekday =
-            "Escolhe um dia da semana para indisponibilidade recorrente.";
+    const { weekdays, error: weekdayError } = parseWeekdayValues(formData);
+    if (weekdayError) {
+        fieldErrors.weekday = weekdayError;
     }
 
     if (Object.keys(fieldErrors).length > 0) {
@@ -448,7 +500,7 @@ export async function createEmployeeWorkPreference(
         }
     }
 
-    const { error } = await context.supabase.from("employee_work_preferences").insert({
+    const rowsToInsert = (weekdays ?? [null]).map((weekday) => ({
         organization_id: organizationId,
         employee_id: employeeId,
         preference_type: preferenceType,
@@ -456,7 +508,11 @@ export async function createEmployeeWorkPreference(
         weekday,
         active,
         notes: notes || null,
-    });
+    }));
+
+    const { error } = await context.supabase
+        .from("employee_work_preferences")
+        .insert(rowsToInsert);
 
     if (error) {
         return {
@@ -483,12 +539,15 @@ export async function updateEmployeeWorkPreference(
     const employeeId = String(formData.get("employee_id") ?? "").trim();
     const preferenceType = String(formData.get("preference_type") ?? "").trim();
     const shiftTypeId = String(formData.get("shift_type_id") ?? "").trim();
-    const weekdayInput = String(formData.get("weekday") ?? "").trim();
     const notes = String(formData.get("notes") ?? "").trim();
     const active = formData.get("active") === "on";
     const fieldErrors: WorkPreferenceFormState["fieldErrors"] = {};
+    const preferenceIds = parsePreferenceIds(formData, id);
 
-    if (!uuidPattern.test(id)) {
+    if (!uuidPattern.test(id) && preferenceIds.length === 0) {
+        fieldErrors.id = "Preferência inválida.";
+    }
+    if (preferenceIds.some((preferenceId) => !uuidPattern.test(preferenceId))) {
         fieldErrors.id = "Preferência inválida.";
     }
 
@@ -511,18 +570,9 @@ export async function updateEmployeeWorkPreference(
         fieldErrors.shiftTypeId = "Este tipo não permite turno.";
     }
 
-    const weekday = normalizeWeekday(weekdayInput);
-    if (weekdayInput && weekday === null) {
-        fieldErrors.weekday = "Escolhe um dia da semana válido.";
-    }
-
-    if (
-        preferenceType === "unavailable_weekday" &&
-        weekday === null &&
-        !fieldErrors.weekday
-    ) {
-        fieldErrors.weekday =
-            "Escolhe um dia da semana para indisponibilidade recorrente.";
+    const { weekdays, error: weekdayError } = parseWeekdayValues(formData);
+    if (weekdayError) {
+        fieldErrors.weekday = weekdayError;
     }
 
     if (Object.keys(fieldErrors).length > 0) {
@@ -579,20 +629,33 @@ export async function updateEmployeeWorkPreference(
         }
     }
 
+    const rowsToInsert = (weekdays ?? [null]).map((weekday) => ({
+        organization_id: organizationId,
+        employee_id: employeeId,
+        preference_type: preferenceType,
+        shift_type_id: shiftTypeId || null,
+        weekday,
+        active,
+        notes: notes || null,
+    }));
+
+    const { error: insertError } = await context.supabase
+        .from("employee_work_preferences")
+        .insert(rowsToInsert);
+
+    if (insertError) {
+        return {
+            status: "error",
+            message: `Não consegui atualizar a preferência fixa: ${insertError.message}`,
+        };
+    }
+
     const { error } = await context.supabase
         .from("employee_work_preferences")
-        .update({
-            employee_id: employeeId,
-            preference_type: preferenceType,
-            shift_type_id: shiftTypeId || null,
-            weekday,
-            active,
-            notes: notes || null,
-        })
-        .eq("id", id)
+        .delete()
+        .in("id", preferenceIds)
         .eq("organization_id", organizationId)
-        .select("id")
-        .single();
+        .eq("employee_id", employeeId);
 
     if (error) {
         return {
@@ -617,8 +680,13 @@ export async function deleteEmployeeWorkPreference(
 ): Promise<DeleteWorkPreferenceState> {
     const id = String(formData.get("id") ?? "").trim();
     const employeeId = String(formData.get("employee_id") ?? "").trim();
+    const preferenceIds = parsePreferenceIds(formData, id);
 
-    if (!uuidPattern.test(id) || !uuidPattern.test(employeeId)) {
+    if (
+        !uuidPattern.test(employeeId) ||
+        preferenceIds.length === 0 ||
+        preferenceIds.some((preferenceId) => !uuidPattern.test(preferenceId))
+    ) {
         return {
             status: "error",
             message: "Preferência inválida.",
@@ -646,7 +714,7 @@ export async function deleteEmployeeWorkPreference(
     const { error } = await context.supabase
         .from("employee_work_preferences")
         .delete()
-        .eq("id", id)
+        .in("id", preferenceIds)
         .eq("organization_id", organizationId);
 
     if (error) {

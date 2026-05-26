@@ -70,6 +70,7 @@ type ScheduleConstraintsSectionProps = {
     monthEnd: string;
     monthStart: string;
     scheduleId: string;
+    showHeaderActions?: boolean;
     shiftTypes: ScheduleConstraintShiftType[];
 };
 
@@ -122,6 +123,28 @@ function constraintTypeLabel(constraintType: string) {
         constraintTypeOptions.find((option) => option.value === constraintType)
             ?.label ?? constraintType
     );
+}
+
+function isWeeklyShiftTargetConstraint(constraint: ScheduleConstraintRow) {
+    if (constraint.constraint_type !== "preferred_shift" || !constraint.notes) {
+        return false;
+    }
+
+    const normalizedNotes = constraint.notes.toLocaleLowerCase("pt-PT");
+
+    return (
+        normalizedNotes.includes("objetivo") &&
+        normalizedNotes.includes("turno") &&
+        normalizedNotes.includes("nesta semana")
+    );
+}
+
+function constraintDisplayLabel(constraint: ScheduleConstraintRow) {
+    if (isWeeklyShiftTargetConstraint(constraint)) {
+        return "Objetivo semanal de turno";
+    }
+
+    return constraintTypeLabel(constraint.constraint_type);
 }
 
 function roleLabel(role: string) {
@@ -202,7 +225,7 @@ function ClearAllButton() {
     return (
         <Button type="submit" variant="destructive" disabled={pending}>
             <Trash2Icon />
-            {pending ? "A limpar..." : "Limpar tudo"}
+            {pending ? "A limpar..." : "Limpar restrições"}
         </Button>
     );
 }
@@ -391,7 +414,7 @@ function ConstraintFormFields({
     );
 }
 
-function NewConstraintDialog({
+export function NewConstraintDialog({
     employees,
     monthEnd,
     monthStart,
@@ -479,7 +502,7 @@ function NewConstraintDialog({
     );
 }
 
-function ClearConstraintsDialog({
+export function ClearConstraintsDialog({
     constraintsCount,
     scheduleId,
 }: {
@@ -500,7 +523,7 @@ function ClearConstraintsDialog({
             <DialogTrigger asChild>
                 <Button variant="destructive" disabled={constraintsCount === 0}>
                     <Trash2Icon />
-                    Limpar tudo
+                    Limpar restrições
                 </Button>
             </DialogTrigger>
             <DialogContent>
@@ -716,6 +739,7 @@ export function ScheduleConstraintsSection({
     monthEnd,
     monthStart,
     scheduleId,
+    showHeaderActions = true,
     shiftTypes,
 }: ScheduleConstraintsSectionProps) {
     const constraintsByEmployee = useMemo(() => {
@@ -745,26 +769,28 @@ export function ScheduleConstraintsSection({
                     </p>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
-                    <ImportConstraintsDialog
-                        employees={employees}
-                        monthEnd={monthEnd}
-                        monthStart={monthStart}
-                        scheduleId={scheduleId}
-                        shiftTypes={shiftTypes}
-                    />
-                    <ClearConstraintsDialog
-                        constraintsCount={constraints.length}
-                        scheduleId={scheduleId}
-                    />
-                    <NewConstraintDialog
-                        employees={employees}
-                        monthEnd={monthEnd}
-                        monthStart={monthStart}
-                        scheduleId={scheduleId}
-                        shiftTypes={shiftTypes}
-                    />
-                </div>
+                {showHeaderActions ? (
+                    <div className="flex flex-wrap gap-2">
+                        <ImportConstraintsDialog
+                            employees={employees}
+                            monthEnd={monthEnd}
+                            monthStart={monthStart}
+                            scheduleId={scheduleId}
+                            shiftTypes={shiftTypes}
+                        />
+                        <ClearConstraintsDialog
+                            constraintsCount={constraints.length}
+                            scheduleId={scheduleId}
+                        />
+                        <NewConstraintDialog
+                            employees={employees}
+                            monthEnd={monthEnd}
+                            monthStart={monthStart}
+                            scheduleId={scheduleId}
+                            shiftTypes={shiftTypes}
+                        />
+                    </div>
+                ) : null}
             </div>
 
             {employees.length === 0 ? (
@@ -815,8 +841,8 @@ export function ScheduleConstraintsSection({
                                                     <div className="grid min-w-0 gap-2">
                                                         <div className="flex flex-wrap items-center gap-2">
                                                             <Badge variant="secondary">
-                                                                {constraintTypeLabel(
-                                                                    constraint.constraint_type
+                                                                {constraintDisplayLabel(
+                                                                    constraint
                                                                 )}
                                                             </Badge>
                                                             {shiftType ? (
