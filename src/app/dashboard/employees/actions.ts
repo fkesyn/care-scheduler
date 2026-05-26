@@ -410,11 +410,20 @@ export async function createEmployeeWorkPreference(
             message: context.error,
         };
     }
+    const organizationId = context.organizationId;
+
+    if (!organizationId) {
+        return {
+            status: "error",
+            message:
+                "Não consegui encontrar a organização deste utilizador. Confirma a ligação do user à organização.",
+        };
+    }
 
     const employeeIsValid = await validateEmployeeForOrganization(
         context.supabase,
         employeeId,
-        context.organizationId
+        organizationId
     );
 
     if (!employeeIsValid) {
@@ -428,7 +437,7 @@ export async function createEmployeeWorkPreference(
         const shiftTypeIsValid = await validateShiftTypeForOrganization(
             context.supabase,
             shiftTypeId,
-            context.organizationId
+            organizationId
         );
 
         if (!shiftTypeIsValid) {
@@ -440,7 +449,7 @@ export async function createEmployeeWorkPreference(
     }
 
     const { error } = await context.supabase.from("employee_work_preferences").insert({
-        organization_id: context.organizationId,
+        organization_id: organizationId,
         employee_id: employeeId,
         preference_type: preferenceType,
         shift_type_id: shiftTypeId || null,
@@ -532,11 +541,20 @@ export async function updateEmployeeWorkPreference(
             message: context.error,
         };
     }
+    const organizationId = context.organizationId;
+
+    if (!organizationId) {
+        return {
+            status: "error",
+            message:
+                "Não consegui encontrar a organização deste utilizador. Confirma a ligação do user à organização.",
+        };
+    }
 
     const employeeIsValid = await validateEmployeeForOrganization(
         context.supabase,
         employeeId,
-        context.organizationId
+        organizationId
     );
 
     if (!employeeIsValid) {
@@ -550,7 +568,7 @@ export async function updateEmployeeWorkPreference(
         const shiftTypeIsValid = await validateShiftTypeForOrganization(
             context.supabase,
             shiftTypeId,
-            context.organizationId
+            organizationId
         );
 
         if (!shiftTypeIsValid) {
@@ -572,7 +590,7 @@ export async function updateEmployeeWorkPreference(
             notes: notes || null,
         })
         .eq("id", id)
-        .eq("organization_id", context.organizationId)
+        .eq("organization_id", organizationId)
         .select("id")
         .single();
 
@@ -615,12 +633,21 @@ export async function deleteEmployeeWorkPreference(
             message: context.error,
         };
     }
+    const organizationId = context.organizationId;
+
+    if (!organizationId) {
+        return {
+            status: "error",
+            message:
+                "Não consegui encontrar a organização deste utilizador. Confirma a ligação do user à organização.",
+        };
+    }
 
     const { error } = await context.supabase
         .from("employee_work_preferences")
         .delete()
         .eq("id", id)
-        .eq("organization_id", context.organizationId);
+        .eq("organization_id", organizationId);
 
     if (error) {
         return {
