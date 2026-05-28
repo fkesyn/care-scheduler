@@ -2231,20 +2231,19 @@ export async function generateMonthlySchedule(
         return date.toISOString().slice(0, 10);
     }
 
+    const susanaEmployee = employees.find((employee) => {
+        const normalizedName = employee.name
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLocaleLowerCase("pt-PT");
+        return normalizedName.includes("susana");
+    });
+
     function nextDateValue(dateValue: string) {
         const date = new Date(`${dateValue}T12:00:00Z`);
         date.setUTCDate(date.getUTCDate() + 1);
         return date.toISOString().slice(0, 10);
     }
-
-    const medicationReferenceHolidayDates = new Set(
-        fallbackHolidays.map((holiday) => holiday.holiday_date)
-    );
-    const holidayEveDates = new Set(
-        [...medicationReferenceHolidayDates]
-            .map((holidayDate) => previousDateValue(holidayDate))
-            .filter((dateValue) => monthDays.includes(dateValue))
-    );
 
     function isMedicationPreferredDate(dateValue: string) {
         if (weekendDates.has(dateValue) || holidayDates.has(dateValue)) {
@@ -2252,20 +2251,19 @@ export async function generateMonthlySchedule(
         }
 
         const weekday = new Date(`${dateValue}T00:00:00`).getDay();
-        return weekday === 1 || weekday === 5 || holidayEveDates.has(dateValue);
+        return weekday === 5 || weekday === 1 || weekday === 3;
     }
 
     function medicationDatePriority(dateValue: string) {
-        if (holidayEveDates.has(dateValue)) {
-            return 0;
-        }
-
         const weekday = new Date(`${dateValue}T00:00:00`).getDay();
-        if (weekday === 1) {
+        if (weekday === 5) {
             return 1;
         }
-        if (weekday === 5) {
+        if (weekday === 1) {
             return 2;
+        }
+        if (weekday === 3) {
+            return 3;
         }
 
         return 9;
@@ -2297,36 +2295,6 @@ export async function generateMonthlySchedule(
                 entry.shift_type_id === medicationSupportShift.id &&
                 (entry.work_date === previousDate || entry.work_date === nextDate)
         );
-    }
-
-    function hasMinimumMedicationSpacing(employeeId: string, dateValue: string) {
-        if (!medicationSupportShift) {
-            return true;
-        }
-
-        const targetDate = new Date(`${dateValue}T12:00:00Z`);
-
-        for (const entry of entries) {
-            if (
-                entry.employee_id !== employeeId ||
-                entry.shift_type_id !== medicationSupportShift.id
-            ) {
-                continue;
-            }
-
-            const existingDate = new Date(`${entry.work_date}T12:00:00Z`);
-            const diffInDays =
-                Math.abs(targetDate.getTime() - existingDate.getTime()) /
-                (1000 * 60 * 60 * 24);
-
-            // Base rule: at least a 3-day interval between M* shifts
-            // for the same employee.
-            if (diffInDays < 3) {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     function consecutiveDaysBefore(employeeId: string, dateValue: string) {
@@ -2798,9 +2766,9 @@ export async function generateMonthlySchedule(
                 firstHolidayCount * holidayWeight +
                 firstConsecutive * 40 +
                 (firstAlternates ? 12 : 0) +
-                (firstPreferred ? -35 : 0) +
-                (firstFixedPreferred ? -55 : 0) +
-                (firstOppositePreferred ? 30 : 0) +
+                (firstPreferred ? -120 : 0) +
+                (firstFixedPreferred ? -220 : 0) +
+                (firstOppositePreferred ? 90 : 0) +
                 firstWeekBalancePenalty +
                 firstAvoidPenalty;
             const secondScore =
@@ -2809,9 +2777,9 @@ export async function generateMonthlySchedule(
                 secondHolidayCount * holidayWeight +
                 secondConsecutive * 40 +
                 (secondAlternates ? 12 : 0) +
-                (secondPreferred ? -35 : 0) +
-                (secondFixedPreferred ? -55 : 0) +
-                (secondOppositePreferred ? 30 : 0) +
+                (secondPreferred ? -120 : 0) +
+                (secondFixedPreferred ? -220 : 0) +
+                (secondOppositePreferred ? 90 : 0) +
                 secondWeekBalancePenalty +
                 secondAvoidPenalty;
 
@@ -3207,6 +3175,120 @@ export async function generateMonthlySchedule(
         return true;
     }
 
+    function tryAssignMedicationShiftOnDate(dateValue: string) {
+        if (!medicationSupportShift) {
+            return false;
+        }
+
+        const hasMedicationOnDate = entries.some(
+            (entry) =>
+                entry.shift_type_id === medicationSupportShift.id &&
+                entry.work_date === dateValue
+        );
+
+        if (hasMedicationOnDate) {
+            return false;
+        }
+
+        const hardCandidates = employees.filter((employee) =>
+            canAssignShiftToEmployee(employee.id, dateValue, medicationSupportShift)
+        );
+
+        if (hardCandidates.length > 0) {
+            const chosenEmployee = chooseBestCandidate(
+                hardCandidates,
+                medicationSupportShift,
+                dateValue
+            );
+
+            if (!chosenEmployee) {
+                return false;
+            }
+
+            addEntry(
+                chosenEmployee.id,
+                dateValue,
+                medicationSupportShift,
+                "Gerado automaticamente: apoio medicação semanal",
+                true
+            );
+
+            return true;
+        }
+
+        for (const entry of entries) {
+            if (entry.work_date !== dateValue) {
+                continue;
+            }
+
+            const currentShift = shiftTypesById.get(entry.shift_type_id);
+
+            if (
+                !currentShift ||
+                currentShift.id === medicationSupportShift.id ||
+                nonWorkShiftCodes.has(currentShift.code) ||
+                currentShift.code === "E*" ||
+                currentShift.code === "MT"
+            ) {
+                continue;
+            }
+
+            const currentEmployeeConstraints =
+                constraintsByEmployee.get(entry.employee_id) ?? [];
+            if (
+                isHardBlockedForShift(
+                    currentEmployeeConstraints,
+                    dateValue,
+                    medicationSupportShift.id
+                )
+            ) {
+                continue;
+            }
+
+            const replacementEmployee = employees.find((candidate) => {
+                if (candidate.id === entry.employee_id) {
+                    return false;
+                }
+
+                const assignedEmployees = assignedEmployeesByDate.get(dateValue);
+                if (assignedEmployees?.has(candidate.id)) {
+                    return false;
+                }
+
+                return canAssignShiftToEmployee(candidate.id, dateValue, currentShift);
+            });
+
+            if (!replacementEmployee) {
+                continue;
+            }
+
+            const handoffAdded = addEntry(
+                replacementEmployee.id,
+                dateValue,
+                currentShift,
+                "Reequilibrado para cumprir regra semanal de M*",
+                true
+            );
+
+            if (!handoffAdded) {
+                continue;
+            }
+
+            entry.shift_type_id = medicationSupportShift.id;
+            entry.notes = "Gerado automaticamente: apoio medicação semanal";
+            adjustCountersForEntryShiftChange(
+                entry.employee_id,
+                dateValue,
+                currentShift,
+                medicationSupportShift
+            );
+
+            return true;
+        }
+
+        return false;
+    }
+
     const uniqueWeekStartKeys = [...new Set(monthDays.map(weekStartKeyFromDate))];
 
     const weeklyMedicationTargets = new Map<string, number>();
@@ -3288,8 +3370,7 @@ export async function generateMonthlySchedule(
                                 employeeId,
                                 dateValue,
                                 medicationSupportShift
-                            ) ||
-                            !hasMinimumMedicationSpacing(employeeId, dateValue)
+                            )
                         ) {
                             continue;
                         }
@@ -3314,7 +3395,6 @@ export async function generateMonthlySchedule(
                         nonWorkShiftCodes.has(existingShift.code) ||
                         existingShift.code === "E*" ||
                         existingShift.code === "MT" ||
-                        !hasMinimumMedicationSpacing(employeeId, dateValue) ||
                         isHardBlockedForShift(
                             employeeConstraints,
                             dateValue,
@@ -3383,6 +3463,9 @@ export async function generateMonthlySchedule(
     }
 
     if (medicationSupportShift) {
+        const minimumWeeklyMedicationCount = 2;
+        const idealWeeklyMedicationCount = 3;
+
         for (const weekStartKey of uniqueWeekStartKeys) {
             const weekDates = monthDays.filter(
                 (dateValue) => weekStartKeyFromDate(dateValue) === weekStartKey
@@ -3402,15 +3485,10 @@ export async function generateMonthlySchedule(
                 continue;
             }
 
-            if (currentWeekMedicationEntries >= 1) {
-                continue;
-            }
-
-            let assignedMedicationShift = false;
+            let nextWeekMedicationEntries = currentWeekMedicationEntries;
             const candidateDates = orderMedicationDates(
                 weekDates.filter((dateValue) => isMedicationPreferredDate(dateValue))
             );
-
             const nonAdjacentCandidateDates = candidateDates.filter(
                 (dateValue) => !hasAdjacentMedicationShift(dateValue)
             );
@@ -3418,43 +3496,47 @@ export async function generateMonthlySchedule(
                 nonAdjacentCandidateDates.length > 0
                     ? nonAdjacentCandidateDates
                     : candidateDates;
+            const maximumTargetForWeek = Math.min(
+                idealWeeklyMedicationCount,
+                datesToTry.length
+            );
+            const minimumTargetForWeek = Math.min(
+                minimumWeeklyMedicationCount,
+                datesToTry.length
+            );
+            const mandatoryBaseDates = datesToTry.filter((dateValue) => {
+                const weekday = new Date(`${dateValue}T00:00:00`).getDay();
+                return weekday === 5 || weekday === 1;
+            });
+            const optionalThirdDates = datesToTry.filter((dateValue) => {
+                const weekday = new Date(`${dateValue}T00:00:00`).getDay();
+                return weekday === 3;
+            });
+            const fallbackMedicationDates = datesToTry.filter((dateValue) => {
+                const weekday = new Date(`${dateValue}T00:00:00`).getDay();
+                return weekday !== 5 && weekday !== 1 && weekday !== 3;
+            });
+            const assignmentOrder = [
+                ...mandatoryBaseDates,
+                ...optionalThirdDates,
+                ...fallbackMedicationDates,
+            ];
 
-            for (const dateValue of datesToTry) {
-                const hardCandidates = employees.filter((employee) =>
-                    canAssignShiftToEmployee(employee.id, dateValue, medicationSupportShift) &&
-                    hasMinimumMedicationSpacing(employee.id, dateValue)
-                );
-
-                if (hardCandidates.length === 0) {
-                    continue;
+            for (const dateValue of assignmentOrder) {
+                if (nextWeekMedicationEntries >= maximumTargetForWeek) {
+                    break;
                 }
 
-                const chosenEmployee = chooseBestCandidate(
-                    hardCandidates,
-                    medicationSupportShift,
-                    dateValue
-                );
-
-                if (!chosenEmployee) {
-                    continue;
+                if (tryAssignMedicationShiftOnDate(dateValue)) {
+                    nextWeekMedicationEntries += 1;
                 }
-
-                addEntry(
-                    chosenEmployee.id,
-                    dateValue,
-                    medicationSupportShift,
-                    "Gerado automaticamente: apoio medicação semanal",
-                    true
-                );
-                assignedMedicationShift = true;
-                break;
             }
 
-            if (!assignedMedicationShift) {
+            if (nextWeekMedicationEntries < minimumTargetForWeek) {
                 addWarning(
                     weekDates[0] ?? generationSchedule.month,
                     medicationSupportShift.id,
-                    `Não consegui garantir o mínimo semanal de 1 turno ${medicationSupportShift.code}.`
+                    `Não consegui garantir o mínimo semanal de ${minimumWeeklyMedicationCount} turnos ${medicationSupportShift.code}.`
                 );
             }
         }
@@ -3472,83 +3554,61 @@ export async function generateMonthlySchedule(
                 `Turno ${managementSupportShift.code} acima do máximo mensal (1).`
             );
         } else if (currentManagementEntries === 0) {
-            const candidateDates = monthDays.filter(
-                (dateValue) =>
-                    Number(dateValue.slice(8, 10)) >= 20 &&
-                    !weekendDates.has(dateValue) &&
-                    !holidayDates.has(dateValue)
-            );
-            const employeesWithManagementPreference = employees
-                .filter((employee) =>
-                    candidateDates.some((dateValue) =>
-                        hasPreferredShift(
-                            constraintsByEmployee.get(employee.id) ?? [],
-                            dateValue,
-                            managementSupportShift.id
-                        )
-                    )
-                )
-                .map((employee) => employee.id);
-
-            let assignedManagementShift = false;
-
-            for (const dateValue of candidateDates) {
-                const hardCandidates = employees.filter((employee) =>
-                    canAssignShiftToEmployee(
-                        employee.id,
-                        dateValue,
-                        managementSupportShift
-                    )
-                );
-
-                if (hardCandidates.length === 0) {
-                    continue;
-                }
-
-                const preferredCandidates = hardCandidates.filter((employee) =>
-                    hasPreferredShift(
-                        constraintsByEmployee.get(employee.id) ?? [],
-                        dateValue,
-                        managementSupportShift.id
-                    )
-                );
-                const restrictedCandidates =
-                    employeesWithManagementPreference.length > 0
-                        ? hardCandidates.filter((employee) =>
-                              employeesWithManagementPreference.includes(employee.id)
-                          )
-                        : hardCandidates;
-                const usableCandidates =
-                    preferredCandidates.length > 0
-                        ? preferredCandidates
-                        : restrictedCandidates;
-                const chosenEmployee = chooseBestCandidate(
-                    usableCandidates,
-                    managementSupportShift,
-                    dateValue
-                );
-
-                if (!chosenEmployee) {
-                    continue;
-                }
-
-                addEntry(
-                    chosenEmployee.id,
-                    dateValue,
-                    managementSupportShift,
-                    "Gerado automaticamente: turno de gestão mensal",
-                    true
-                );
-                assignedManagementShift = true;
-                break;
-            }
-
-            if (!assignedManagementShift) {
+            if (!susanaEmployee) {
                 addWarning(
                     generationSchedule.month,
                     managementSupportShift.id,
-                    `Não consegui agendar o turno mensal ${managementSupportShift.code} (a partir do dia 20).`
+                    `Não consegui agendar ${managementSupportShift.code}: a Susana não está ativa na equipa.`
                 );
+            } else {
+                const candidateDates = monthDays.filter(
+                    (dateValue) =>
+                        Number(dateValue.slice(8, 10)) >= 20 &&
+                        !weekendDates.has(dateValue) &&
+                        !holidayDates.has(dateValue)
+                );
+                let assignedManagementShift = false;
+
+                for (const dateValue of candidateDates) {
+                    const hardCandidates = canAssignShiftToEmployee(
+                        susanaEmployee.id,
+                        dateValue,
+                        managementSupportShift
+                    )
+                        ? [susanaEmployee]
+                        : [];
+
+                    if (hardCandidates.length === 0) {
+                        continue;
+                    }
+                    const chosenEmployee = chooseBestCandidate(
+                        hardCandidates,
+                        managementSupportShift,
+                        dateValue
+                    );
+
+                    if (!chosenEmployee) {
+                        continue;
+                    }
+
+                    addEntry(
+                        chosenEmployee.id,
+                        dateValue,
+                        managementSupportShift,
+                        "Gerado automaticamente: turno de gestão mensal",
+                        true
+                    );
+                    assignedManagementShift = true;
+                    break;
+                }
+
+                if (!assignedManagementShift) {
+                    addWarning(
+                        generationSchedule.month,
+                        managementSupportShift.id,
+                        `Não consegui agendar o turno mensal ${managementSupportShift.code} para a Susana (a partir do dia 20).`
+                    );
+                }
             }
         }
     }
@@ -3611,7 +3671,6 @@ export async function generateMonthlySchedule(
                         dateValue,
                         medicationSupportShift.id
                     ) ||
-                    !hasMinimumMedicationSpacing(candidateEntry.employee_id, dateValue) ||
                     hasSoftAvoidanceForShift(
                         candidateConstraints,
                         dateValue,
