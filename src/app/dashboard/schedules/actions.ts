@@ -2224,6 +2224,20 @@ export async function generateMonthlySchedule(
             return weekday === 0 || weekday === 6;
         })
     );
+    const weekendBlockKeys = new Set(
+        monthDays
+            .filter((dateValue) => weekendDates.has(dateValue))
+            .map((dateValue) => {
+                const weekday = weekdayFromDate(dateValue);
+                return weekday === 0 ? previousDateValue(dateValue) : dateValue;
+            })
+    );
+    const totalWeekendBlocksInMonth = weekendBlockKeys.size;
+    const minimumFullWeekendRestTarget = totalWeekendBlocksInMonth >= 4 ? 2 : 1;
+    const maxWeekendBlocksPerEmployeeTarget = Math.max(
+        totalWeekendBlocksInMonth - minimumFullWeekendRestTarget,
+        1
+    );
 
     function previousDateValue(dateValue: string) {
         const date = new Date(`${dateValue}T12:00:00Z`);
@@ -2243,6 +2257,61 @@ export async function generateMonthlySchedule(
         const date = new Date(`${dateValue}T12:00:00Z`);
         date.setUTCDate(date.getUTCDate() + 1);
         return date.toISOString().slice(0, 10);
+    }
+
+    function weekendBlockKeyFromDate(dateValue: string) {
+        const weekday = weekdayFromDate(dateValue);
+        if (weekday === 6) {
+            return dateValue;
+        }
+        if (weekday === 0) {
+            return previousDateValue(dateValue);
+        }
+        return "";
+    }
+
+    function nextWeekendBlockKey(blockKey: string) {
+        const date = new Date(`${blockKey}T12:00:00Z`);
+        date.setUTCDate(date.getUTCDate() + 7);
+        return date.toISOString().slice(0, 10);
+    }
+
+    function previousWeekendBlockKey(blockKey: string) {
+        const date = new Date(`${blockKey}T12:00:00Z`);
+        date.setUTCDate(date.getUTCDate() - 7);
+        return date.toISOString().slice(0, 10);
+    }
+
+    function employeeWorksWeekendBlock(employeeId: string, blockKey: string) {
+        const assignedDates = assignedDatesByEmployee.get(employeeId) ?? new Set<string>();
+        const sunday = nextDateValue(blockKey);
+        return assignedDates.has(blockKey) || assignedDates.has(sunday);
+    }
+
+    function employeeWeekendBlocksWorked(employeeId: string) {
+        const assignedDates = assignedDatesByEmployee.get(employeeId) ?? new Set<string>();
+        const blocks = new Set<string>();
+
+        for (const dateValue of assignedDates) {
+            if (!weekendDates.has(dateValue)) {
+                continue;
+            }
+            const blockKey = weekendBlockKeyFromDate(dateValue);
+            if (blockKey) {
+                blocks.add(blockKey);
+            }
+        }
+
+        return blocks.size;
+    }
+
+    function employeeWeekendDaysWorked(employeeId: string) {
+        return entries.filter(
+            (entry) =>
+                entry.employee_id === employeeId &&
+                weekendDates.has(entry.work_date) &&
+                entry.shift_type_id === weekendCombinedShiftSafe.id
+        ).length;
     }
 
     function isMedicationPreferredDate(dateValue: string) {
@@ -2310,6 +2379,54 @@ export async function generateMonthlySchedule(
         return streak;
     }
 
+    function wouldCreateSixDayStreakAfterToggle(
+        employeeId: string,
+        dateValue: string,
+        nextWillBeWork: boolean
+    ) {
+        return wouldCreateSixDayStreakWithOverrides(
+            employeeId,
+            dateValue,
+            nextWillBeWork
+        );
+    }
+
+    function wouldCreateSixDayStreakWithOverrides(
+        employeeId: string,
+        dateValue: string,
+        nextWillBeWork: boolean,
+        forcedOffDates = new Set<string>()
+    ) {
+        if (!nextWillBeWork) {
+            return false;
+        }
+
+        const assignedDates = assignedDatesByEmployee.get(employeeId) ?? new Set<string>();
+        const isAssigned = (value: string) => {
+            if (forcedOffDates.has(value)) {
+                return false;
+            }
+
+            return value === dateValue ? nextWillBeWork : assignedDates.has(value);
+        };
+        let before = 0;
+        let after = 0;
+        let cursorBefore = previousDateValue(dateValue);
+        let cursorAfter = nextDateValue(dateValue);
+
+        while (isAssigned(cursorBefore)) {
+            before += 1;
+            cursorBefore = previousDateValue(cursorBefore);
+        }
+
+        while (isAssigned(cursorAfter)) {
+            after += 1;
+            cursorAfter = nextDateValue(cursorAfter);
+        }
+
+        return before + 1 + after >= 6;
+    }
+
     function shiftWorkUnits(shiftType: GenerationShiftType) {
         return shiftType.code === "MT" ? 2 : 1;
     }
@@ -2348,8 +2465,16 @@ export async function generateMonthlySchedule(
         countAsWorkShift: boolean
     ) {
         const cellKey = buildEntryKey(employeeId, workDate);
+        const isWorkShift = !nonWorkShiftCodes.has(shiftType.code);
 
         if (entriesByCell.has(cellKey)) {
+            return false;
+        }
+
+        if (
+            isWorkShift &&
+            wouldCreateSixDayStreakAfterToggle(employeeId, workDate, true)
+        ) {
             return false;
         }
 
@@ -2367,6 +2492,13 @@ export async function generateMonthlySchedule(
         assignedEmployees.add(employeeId);
         assignedEmployeesByDate.set(workDate, assignedEmployees);
         entries.push(entry);
+        if (isWorkShift) {
+            const assignedDates = assignedDatesByEmployee.get(employeeId) ?? new Set<string>();
+            assignedDates.add(workDate);
+            assignedDatesByEmployee.set(employeeId, assignedDates);
+            lastAssignedShiftCodeByEmployee.set(employeeId, shiftType.code);
+            lastAssignedDateByEmployee.set(employeeId, workDate);
+        }
 
         if (countAsWorkShift) {
             const shiftUnits = shiftWorkUnits(shiftType);
@@ -2391,12 +2523,6 @@ export async function generateMonthlySchedule(
                     (holidayShiftCounts.get(employeeId) ?? 0) + 1
                 );
             }
-
-            const assignedDates = assignedDatesByEmployee.get(employeeId) ?? new Set<string>();
-            assignedDates.add(workDate);
-            assignedDatesByEmployee.set(employeeId, assignedDates);
-            lastAssignedShiftCodeByEmployee.set(employeeId, shiftType.code);
-            lastAssignedDateByEmployee.set(employeeId, workDate);
         }
 
         return true;
@@ -2739,6 +2865,53 @@ export async function generateMonthlySchedule(
             const secondWeekendCount = weekendShiftCounts.get(second.id) ?? 0;
             const firstHolidayCount = holidayShiftCounts.get(first.id) ?? 0;
             const secondHolidayCount = holidayShiftCounts.get(second.id) ?? 0;
+            const isWeekendCombinedShift =
+                requiredShift.id === weekendCombinedShiftSafe.id;
+            const firstWeekendDaysWorked = isWeekendCombinedShift
+                ? employeeWeekendDaysWorked(first.id)
+                : 0;
+            const secondWeekendDaysWorked = isWeekendCombinedShift
+                ? employeeWeekendDaysWorked(second.id)
+                : 0;
+            const weekendBlockKey = weekendDates.has(dateValue)
+                ? weekendBlockKeyFromDate(dateValue)
+                : "";
+            const firstWeekendBlocksWorked = weekendBlockKey
+                ? employeeWeekendBlocksWorked(first.id)
+                : 0;
+            const secondWeekendBlocksWorked = weekendBlockKey
+                ? employeeWeekendBlocksWorked(second.id)
+                : 0;
+            const firstAlreadyOnWeekendBlock = weekendBlockKey
+                ? employeeWorksWeekendBlock(first.id, weekendBlockKey)
+                : false;
+            const secondAlreadyOnWeekendBlock = weekendBlockKey
+                ? employeeWorksWeekendBlock(second.id, weekendBlockKey)
+                : false;
+            const firstProjectedWeekendBlocks = weekendBlockKey
+                ? firstWeekendBlocksWorked + (firstAlreadyOnWeekendBlock ? 0 : 1)
+                : firstWeekendBlocksWorked;
+            const secondProjectedWeekendBlocks = weekendBlockKey
+                ? secondWeekendBlocksWorked + (secondAlreadyOnWeekendBlock ? 0 : 1)
+                : secondWeekendBlocksWorked;
+            const firstExceededWeekendTarget = weekendBlockKey
+                ? firstProjectedWeekendBlocks > maxWeekendBlocksPerEmployeeTarget
+                : false;
+            const secondExceededWeekendTarget = weekendBlockKey
+                ? secondProjectedWeekendBlocks > maxWeekendBlocksPerEmployeeTarget
+                : false;
+            const previousBlockKey = weekendBlockKey
+                ? previousWeekendBlockKey(weekendBlockKey)
+                : "";
+            const nextBlockKey = weekendBlockKey ? nextWeekendBlockKey(weekendBlockKey) : "";
+            const firstWorkedAdjacentWeekend = weekendBlockKey
+                ? employeeWorksWeekendBlock(first.id, previousBlockKey) ||
+                  employeeWorksWeekendBlock(first.id, nextBlockKey)
+                : false;
+            const secondWorkedAdjacentWeekend = weekendBlockKey
+                ? employeeWorksWeekendBlock(second.id, previousBlockKey) ||
+                  employeeWorksWeekendBlock(second.id, nextBlockKey)
+                : false;
             const firstConsecutive = consecutiveDaysBefore(first.id, dateValue);
             const secondConsecutive = consecutiveDaysBefore(second.id, dateValue);
             const firstLastShift = lastAssignedShiftCodeByEmployee.get(first.id);
@@ -2758,6 +2931,28 @@ export async function generateMonthlySchedule(
                 avoidEmployeeId && second.id === avoidEmployeeId ? 500 : 0;
             const weekendWeight = prioritizeWeekendBalance ? 70 : 30;
             const holidayWeight = prioritizeHolidayBalance ? 80 : 35;
+            const firstWeekendBlockRepeatPenalty =
+                weekendBlockKey && firstAlreadyOnWeekendBlock ? 260 : 0;
+            const secondWeekendBlockRepeatPenalty =
+                weekendBlockKey && secondAlreadyOnWeekendBlock ? 260 : 0;
+            const firstWeekendTargetPenalty =
+                weekendBlockKey && firstExceededWeekendTarget ? 360 : 0;
+            const secondWeekendTargetPenalty =
+                weekendBlockKey && secondExceededWeekendTarget ? 360 : 0;
+            const firstAdjacentWeekendPenalty =
+                weekendBlockKey && firstWorkedAdjacentWeekend ? 90 : 0;
+            const secondAdjacentWeekendPenalty =
+                weekendBlockKey && secondWorkedAdjacentWeekend ? 90 : 0;
+            const firstWeekendDaysDistributionPenalty = isWeekendCombinedShift
+                ? firstWeekendDaysWorked * 420
+                : 0;
+            const secondWeekendDaysDistributionPenalty = isWeekendCombinedShift
+                ? secondWeekendDaysWorked * 420
+                : 0;
+            const firstWeekendZeroLoadBonus =
+                isWeekendCombinedShift && firstWeekendDaysWorked === 0 ? -220 : 0;
+            const secondWeekendZeroLoadBonus =
+                isWeekendCombinedShift && secondWeekendDaysWorked === 0 ? -220 : 0;
 
             // Weighted score: lower is better.
             const firstScore =
@@ -2769,6 +2964,11 @@ export async function generateMonthlySchedule(
                 (firstPreferred ? -120 : 0) +
                 (firstFixedPreferred ? -220 : 0) +
                 (firstOppositePreferred ? 90 : 0) +
+                firstWeekendBlockRepeatPenalty +
+                firstWeekendTargetPenalty +
+                firstAdjacentWeekendPenalty +
+                firstWeekendDaysDistributionPenalty +
+                firstWeekendZeroLoadBonus +
                 firstWeekBalancePenalty +
                 firstAvoidPenalty;
             const secondScore =
@@ -2780,6 +2980,11 @@ export async function generateMonthlySchedule(
                 (secondPreferred ? -120 : 0) +
                 (secondFixedPreferred ? -220 : 0) +
                 (secondOppositePreferred ? 90 : 0) +
+                secondWeekendBlockRepeatPenalty +
+                secondWeekendTargetPenalty +
+                secondAdjacentWeekendPenalty +
+                secondWeekendDaysDistributionPenalty +
+                secondWeekendZeroLoadBonus +
                 secondWeekBalancePenalty +
                 secondAvoidPenalty;
 
@@ -2804,12 +3009,50 @@ export async function generateMonthlySchedule(
     }
 
     function isHardBlockedForRequiredShift(
+        employeeId: string,
         constraints: GenerationConstraint[],
         dateValue: string,
         requiredShift: GenerationShiftType
     ) {
         if (requiredShift.id !== weekendCombinedShiftSafe.id) {
             return isHardBlockedForShift(constraints, dateValue, requiredShift.id);
+        }
+
+        const weekday = weekdayFromDate(dateValue);
+        const weekendSaturday =
+            weekday === 6
+                ? dateValue
+                : weekday === 0
+                  ? previousDateValue(dateValue)
+                  : "";
+        const weekendSunday =
+            weekday === 0
+                ? dateValue
+                : weekday === 6
+                  ? nextDateValue(dateValue)
+                  : "";
+        const adjacentFriday = weekendSaturday ? previousDateValue(weekendSaturday) : "";
+        const adjacentMonday = weekendSunday ? nextDateValue(weekendSunday) : "";
+        const hasAdjacentVacation = constraints.some(
+            (constraint) =>
+                constraint.constraint_type === "vacation" &&
+                ((adjacentFriday && constraintMatchesDate(constraint, adjacentFriday)) ||
+                    (adjacentMonday && constraintMatchesDate(constraint, adjacentMonday)))
+        );
+        const hasAdjacentVacationEntry = [adjacentFriday, adjacentMonday].some((adjacentDate) => {
+            if (!adjacentDate) {
+                return false;
+            }
+
+            const adjacentEntry = entriesByCell.get(buildEntryKey(employeeId, adjacentDate));
+            const adjacentShift = adjacentEntry
+                ? shiftTypesById.get(adjacentEntry.shift_type_id)
+                : null;
+            return adjacentShift?.code === "Fe";
+        });
+
+        if (hasAdjacentVacation || hasAdjacentVacationEntry) {
+            return true;
         }
 
         return (
@@ -2957,6 +3200,88 @@ export async function generateMonthlySchedule(
         }
     }
 
+    type ForcedShiftSwapSnapshot = {
+        firstEntry: GenerationEntry;
+        secondEntry: GenerationEntry;
+        firstShift: GenerationShiftType;
+        secondShift: GenerationShiftType;
+        firstNotes: string | null;
+        secondNotes: string | null;
+        workDate: string;
+    };
+
+    function setEntryShiftType(
+        entry: GenerationEntry,
+        workDate: string,
+        previousShift: GenerationShiftType,
+        nextShift: GenerationShiftType,
+        notes: string | null
+    ) {
+        entry.shift_type_id = nextShift.id;
+        entry.notes = notes;
+
+        adjustCountersForEntryShiftChange(
+            entry.employee_id,
+            workDate,
+            previousShift,
+            nextShift
+        );
+    }
+
+    function forceSwapEntryShiftTypes(
+        firstEntry: GenerationEntry,
+        secondEntry: GenerationEntry,
+        workDate: string,
+        notes: string
+    ) {
+        const firstShift = shiftTypesById.get(firstEntry.shift_type_id);
+        const secondShift = shiftTypesById.get(secondEntry.shift_type_id);
+
+        if (!firstShift || !secondShift) {
+            return null;
+        }
+
+        const snapshot: ForcedShiftSwapSnapshot = {
+            firstEntry,
+            secondEntry,
+            firstShift,
+            secondShift,
+            firstNotes: firstEntry.notes ?? null,
+            secondNotes: secondEntry.notes ?? null,
+            workDate,
+        };
+
+        setEntryShiftType(firstEntry, workDate, firstShift, secondShift, notes);
+        setEntryShiftType(secondEntry, workDate, secondShift, firstShift, notes);
+
+        return snapshot;
+    }
+
+    function restoreForcedShiftSwap(snapshot: ForcedShiftSwapSnapshot) {
+        const currentFirstShift = shiftTypesById.get(snapshot.firstEntry.shift_type_id);
+        const currentSecondShift = shiftTypesById.get(snapshot.secondEntry.shift_type_id);
+
+        if (currentFirstShift) {
+            setEntryShiftType(
+                snapshot.firstEntry,
+                snapshot.workDate,
+                currentFirstShift,
+                snapshot.firstShift,
+                snapshot.firstNotes
+            );
+        }
+
+        if (currentSecondShift) {
+            setEntryShiftType(
+                snapshot.secondEntry,
+                snapshot.workDate,
+                currentSecondShift,
+                snapshot.secondShift,
+                snapshot.secondNotes
+            );
+        }
+    }
+
     function swapEntryShiftTypes(
         firstEntry: GenerationEntry,
         secondEntry: GenerationEntry,
@@ -2969,25 +3294,31 @@ export async function generateMonthlySchedule(
             return false;
         }
 
-        firstEntry.shift_type_id = secondShift.id;
-        secondEntry.shift_type_id = firstShift.id;
-        firstEntry.notes = "Troca automática para respeitar preferência de turno";
-        secondEntry.notes = "Troca automática para respeitar preferência de turno";
+        const firstNextIsWork = !nonWorkShiftCodes.has(secondShift.code);
+        const secondNextIsWork = !nonWorkShiftCodes.has(firstShift.code);
+        if (
+            wouldCreateSixDayStreakAfterToggle(
+                firstEntry.employee_id,
+                workDate,
+                firstNextIsWork
+            ) ||
+            wouldCreateSixDayStreakAfterToggle(
+                secondEntry.employee_id,
+                workDate,
+                secondNextIsWork
+            )
+        ) {
+            return false;
+        }
 
-        adjustCountersForEntryShiftChange(
-            firstEntry.employee_id,
-            workDate,
-            firstShift,
-            secondShift
+        return Boolean(
+            forceSwapEntryShiftTypes(
+                firstEntry,
+                secondEntry,
+                workDate,
+                "Troca automática para respeitar preferência de turno"
+            )
         );
-        adjustCountersForEntryShiftChange(
-            secondEntry.employee_id,
-            workDate,
-            secondShift,
-            firstShift
-        );
-
-        return true;
     }
 
     for (const dateValue of monthDays) {
@@ -3019,7 +3350,18 @@ export async function generateMonthlySchedule(
                     }
                 }
 
+                if (
+                    wouldCreateSixDayStreakAfterToggle(
+                        employee.id,
+                        dateValue,
+                        true
+                    )
+                ) {
+                    return false;
+                }
+
                 return !isHardBlockedForRequiredShift(
+                    employee.id,
                     constraintsByEmployee.get(employee.id) ?? [],
                     dateValue,
                     requiredShift
@@ -3048,13 +3390,52 @@ export async function generateMonthlySchedule(
                 fixedPreferredCandidates.length > 0
                     ? fixedPreferredCandidates
                     : usableCandidates;
-
-            const avoidEmployeeId =
-                isHoliday && requiredShift.code === "T"
-                    ? Array.from(dayAssignedEmployees)[0] ?? undefined
+            const weekendBalancedCandidates =
+                isWeekend && requiredShift.id === weekendCombinedShiftSafe.id
+                    ? prioritizedCandidates.filter((employee) => {
+                          const blockKey = weekendBlockKeyFromDate(dateValue);
+                          if (!blockKey) {
+                              return true;
+                          }
+                          const alreadyOnBlock = employeeWorksWeekendBlock(
+                              employee.id,
+                              blockKey
+                          );
+                          const projectedBlocks =
+                              employeeWeekendBlocksWorked(employee.id) +
+                              (alreadyOnBlock ? 0 : 1);
+                          return (
+                              !alreadyOnBlock &&
+                              projectedBlocks <= maxWeekendBlocksPerEmployeeTarget
+                          );
+                      })
+                    : [];
+            const candidatesForSelection =
+                weekendBalancedCandidates.length > 0
+                    ? weekendBalancedCandidates
+                    : prioritizedCandidates;
+            const weekendPeerEmployeeId =
+                isWeekend && requiredShift.id === weekendCombinedShiftSafe.id
+                    ? entries.find((entry) => {
+                          if (
+                              entry.shift_type_id !== weekendCombinedShiftSafe.id ||
+                              entry.work_date === dateValue
+                          ) {
+                              return false;
+                          }
+                          const blockA = weekendBlockKeyFromDate(entry.work_date);
+                          const blockB = weekendBlockKeyFromDate(dateValue);
+                          return Boolean(blockA && blockB && blockA === blockB);
+                      })?.employee_id
                     : undefined;
 
-            if (prioritizedCandidates.length === 0) {
+            const avoidEmployeeId =
+                weekendPeerEmployeeId ??
+                (isHoliday && requiredShift.code === "T"
+                    ? Array.from(dayAssignedEmployees)[0] ?? undefined
+                    : undefined);
+
+            if (candidatesForSelection.length === 0) {
                 if (!isWeekend && !isHoliday) {
                     addWarning(
                         dateValue,
@@ -3066,7 +3447,7 @@ export async function generateMonthlySchedule(
             }
 
             const chosenEmployee = chooseBestCandidate(
-                prioritizedCandidates,
+                candidatesForSelection,
                 requiredShift,
                 dateValue,
                 {
@@ -3162,6 +3543,14 @@ export async function generateMonthlySchedule(
             return false;
         }
 
+        const isWorkShift = !nonWorkShiftCodes.has(shiftType.code);
+        if (
+            isWorkShift &&
+            wouldCreateSixDayStreakAfterToggle(employeeId, dateValue, true)
+        ) {
+            return false;
+        }
+
         const maxShiftsPerWeek = maxShiftsPerWeekByEmployee.get(employeeId);
         if (maxShiftsPerWeek) {
             const weekKey = `${employeeId}:${weekStartKeyFromDate(dateValue)}`;
@@ -3174,6 +3563,590 @@ export async function generateMonthlySchedule(
 
         return true;
     }
+
+    function canReceiveShiftInExistingCell(
+        employeeId: string,
+        dateValue: string,
+        shiftType: GenerationShiftType,
+        options?: {
+            forcedOffDates?: Set<string>;
+            weekWorkCredit?: number;
+        }
+    ) {
+        const employeeConstraints = constraintsByEmployee.get(employeeId) ?? [];
+        const isHardBlocked =
+            shiftType.id === weekendCombinedShiftSafe.id
+                ? isHardBlockedForRequiredShift(
+                      employeeId,
+                      employeeConstraints,
+                      dateValue,
+                      shiftType
+                  )
+                : isHardBlockedForShift(employeeConstraints, dateValue, shiftType.id);
+
+        if (isHardBlocked) {
+            return false;
+        }
+
+        const isWorkShift = !nonWorkShiftCodes.has(shiftType.code);
+        if (
+            isWorkShift &&
+            wouldCreateSixDayStreakWithOverrides(
+                employeeId,
+                dateValue,
+                true,
+                options?.forcedOffDates
+            )
+        ) {
+            return false;
+        }
+
+        const maxShiftsPerWeek = maxShiftsPerWeekByEmployee.get(employeeId);
+        if (maxShiftsPerWeek) {
+            const weekKey = `${employeeId}:${weekStartKeyFromDate(dateValue)}`;
+            const currentWeekCount = weeklyWorkShiftCounts.get(weekKey) ?? 0;
+            const weekWorkCredit = options?.weekWorkCredit ?? 0;
+
+            if (currentWeekCount + shiftWorkUnits(shiftType) > maxShiftsPerWeek + weekWorkCredit) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    function canTakeWeekendCombinedShift(employeeId: string, dateValue: string) {
+        return canReceiveShiftInExistingCell(
+            employeeId,
+            dateValue,
+            weekendCombinedShiftSafe
+        );
+    }
+
+    function trySwapWeekendEntryWithReceiver(
+        donorEntry: GenerationEntry,
+        receiverEntry: GenerationEntry
+    ) {
+        const receiverShift = shiftTypesById.get(receiverEntry.shift_type_id);
+
+        if (
+            !receiverShift ||
+            !nonWorkShiftCodes.has(receiverShift.code) ||
+            !canTakeWeekendCombinedShift(receiverEntry.employee_id, donorEntry.work_date)
+        ) {
+            return false;
+        }
+
+        const donorConstraints =
+            constraintsByEmployee.get(donorEntry.employee_id) ?? [];
+        if (
+            isHardBlockedForShift(
+                donorConstraints,
+                donorEntry.work_date,
+                receiverShift.id
+            )
+        ) {
+            return false;
+        }
+
+        return swapEntryShiftTypes(donorEntry, receiverEntry, donorEntry.work_date);
+    }
+
+    function weekendRoomReliefEntries(
+        receiverId: string,
+        donorId: string,
+        weekendDate: string
+    ) {
+        const weekendWeekKey = weekStartKeyFromDate(weekendDate);
+        const movableShiftCodes = new Set(["M", "T", "E"]);
+
+        return entries
+            .filter((entry) => {
+                if (
+                    entry.employee_id !== receiverId ||
+                    weekStartKeyFromDate(entry.work_date) !== weekendWeekKey ||
+                    weekendDates.has(entry.work_date) ||
+                    holidayDates.has(entry.work_date)
+                ) {
+                    return false;
+                }
+
+                const shift = shiftTypesById.get(entry.shift_type_id);
+                return Boolean(shift && movableShiftCodes.has(shift.code));
+            })
+            .sort((first, second) => {
+                const firstDistance = Math.abs(
+                    Number(first.work_date.slice(8, 10)) -
+                        Number(weekendDate.slice(8, 10))
+                );
+                const secondDistance = Math.abs(
+                    Number(second.work_date.slice(8, 10)) -
+                        Number(weekendDate.slice(8, 10))
+                );
+
+                if (firstDistance !== secondDistance) {
+                    return firstDistance - secondDistance;
+                }
+
+                const firstIsDonorAvailable = Boolean(
+                    entriesByCell.get(buildEntryKey(donorId, first.work_date))
+                );
+                const secondIsDonorAvailable = Boolean(
+                    entriesByCell.get(buildEntryKey(donorId, second.work_date))
+                );
+
+                if (firstIsDonorAvailable !== secondIsDonorAvailable) {
+                    return firstIsDonorAvailable ? -1 : 1;
+                }
+
+                return second.work_date.localeCompare(first.work_date);
+            });
+    }
+
+    function reliefEmployeeOrder(donorId: string, receiverId: string) {
+        return [...employees].sort((first, second) => {
+            if (first.id === donorId) {
+                return -1;
+            }
+            if (second.id === donorId) {
+                return 1;
+            }
+            if (first.id === receiverId) {
+                return 1;
+            }
+            if (second.id === receiverId) {
+                return -1;
+            }
+
+            const firstCount = workShiftCounts.get(first.id) ?? 0;
+            const secondCount = workShiftCounts.get(second.id) ?? 0;
+
+            if (firstCount !== secondCount) {
+                return firstCount - secondCount;
+            }
+
+            return first.name.localeCompare(second.name, "pt-PT", {
+                sensitivity: "base",
+            });
+        });
+    }
+
+    function tryMakeRoomAndSwapWeekend(
+        donorEntry: GenerationEntry,
+        receiverEntry: GenerationEntry
+    ) {
+        if (trySwapWeekendEntryWithReceiver(donorEntry, receiverEntry)) {
+            return true;
+        }
+
+        const receiverId = receiverEntry.employee_id;
+        const donorId = donorEntry.employee_id;
+        const roomSnapshots: ForcedShiftSwapSnapshot[] = [];
+        const maximumRoomSwaps = Math.min(
+            3,
+            Math.max(1, shiftWorkUnits(weekendCombinedShiftSafe))
+        );
+
+        for (const receiverWorkEntry of weekendRoomReliefEntries(
+            receiverId,
+            donorId,
+            donorEntry.work_date
+        )) {
+            if (roomSnapshots.length >= maximumRoomSwaps) {
+                break;
+            }
+
+            const receiverWorkShift = shiftTypesById.get(
+                receiverWorkEntry.shift_type_id
+            );
+
+            if (!receiverWorkShift) {
+                continue;
+            }
+
+            const receiverConstraints = constraintsByEmployee.get(receiverId) ?? [];
+            let madeRoomOnDate = false;
+
+            for (const reliefEmployee of reliefEmployeeOrder(donorId, receiverId)) {
+                if (reliefEmployee.id === receiverId) {
+                    continue;
+                }
+
+                const reliefEntry = entriesByCell.get(
+                    buildEntryKey(reliefEmployee.id, receiverWorkEntry.work_date)
+                );
+                const reliefShift = reliefEntry
+                    ? shiftTypesById.get(reliefEntry.shift_type_id)
+                    : null;
+
+                if (
+                    !reliefEntry ||
+                    !reliefShift ||
+                    !nonWorkShiftCodes.has(reliefShift.code) ||
+                    employeeRequestedDayOff(
+                        reliefEmployee.id,
+                        receiverWorkEntry.work_date
+                    ) ||
+                    isHardBlockedForShift(
+                        receiverConstraints,
+                        receiverWorkEntry.work_date,
+                        reliefShift.id
+                    )
+                ) {
+                    continue;
+                }
+
+                const isWeekendDonor = reliefEmployee.id === donorId;
+                const forcedOffDates = isWeekendDonor
+                    ? new Set([donorEntry.work_date])
+                    : undefined;
+                const weekWorkCredit =
+                    isWeekendDonor &&
+                    weekStartKeyFromDate(receiverWorkEntry.work_date) ===
+                        weekStartKeyFromDate(donorEntry.work_date)
+                        ? shiftWorkUnits(weekendCombinedShiftSafe)
+                        : 0;
+
+                if (
+                    !canReceiveShiftInExistingCell(
+                        reliefEmployee.id,
+                        receiverWorkEntry.work_date,
+                        receiverWorkShift,
+                        {
+                            forcedOffDates,
+                            weekWorkCredit,
+                        }
+                    )
+                ) {
+                    continue;
+                }
+
+                const snapshot = forceSwapEntryShiftTypes(
+                    receiverWorkEntry,
+                    reliefEntry,
+                    receiverWorkEntry.work_date,
+                    "Troca automática para equilibrar fins de semana"
+                );
+
+                if (!snapshot) {
+                    continue;
+                }
+
+                roomSnapshots.push(snapshot);
+                madeRoomOnDate = true;
+
+                if (trySwapWeekendEntryWithReceiver(donorEntry, receiverEntry)) {
+                    return true;
+                }
+
+                break;
+            }
+
+            if (!madeRoomOnDate) {
+                continue;
+            }
+        }
+
+        for (const snapshot of [...roomSnapshots].reverse()) {
+            restoreForcedShiftSwap(snapshot);
+        }
+
+        return false;
+    }
+
+    function employeeRequestedDayOff(employeeId: string, dateValue: string) {
+        return (constraintsByEmployee.get(employeeId) ?? []).some(
+            (constraint) =>
+                constraint.constraint_type === "preferred_day_off" &&
+                constraintMatchesDate(constraint, dateValue)
+        );
+    }
+
+    function tryResolvePreferredDayOff(employeeId: string, dateValue: string) {
+        if (!dayOffShift) {
+            return false;
+        }
+
+        const currentEntry = entriesByCell.get(buildEntryKey(employeeId, dateValue));
+        const currentShift = currentEntry
+            ? shiftTypesById.get(currentEntry.shift_type_id)
+            : null;
+
+        if (!currentEntry || !currentShift) {
+            return false;
+        }
+
+        if (nonWorkShiftCodes.has(currentShift.code)) {
+            return true;
+        }
+
+        const employeeConstraints = constraintsByEmployee.get(employeeId) ?? [];
+        if (isHardBlockedForShift(employeeConstraints, dateValue, dayOffShift.id)) {
+            return false;
+        }
+
+        const offCandidates = entries
+            .filter((entry) => {
+                if (entry.work_date !== dateValue || entry.employee_id === employeeId) {
+                    return false;
+                }
+
+                const shift = shiftTypesById.get(entry.shift_type_id);
+                return shift?.id === dayOffShift.id;
+            })
+            .sort((first, second) => {
+                const firstHolidayCount = holidayShiftCounts.get(first.employee_id) ?? 0;
+                const secondHolidayCount = holidayShiftCounts.get(second.employee_id) ?? 0;
+
+                if (firstHolidayCount !== secondHolidayCount) {
+                    return firstHolidayCount - secondHolidayCount;
+                }
+
+                const firstWorkCount = workShiftCounts.get(first.employee_id) ?? 0;
+                const secondWorkCount = workShiftCounts.get(second.employee_id) ?? 0;
+
+                if (firstWorkCount !== secondWorkCount) {
+                    return firstWorkCount - secondWorkCount;
+                }
+
+                const firstEmployee = employeeById.get(first.employee_id);
+                const secondEmployee = employeeById.get(second.employee_id);
+
+                return (firstEmployee?.name ?? "").localeCompare(
+                    secondEmployee?.name ?? "",
+                    "pt-PT",
+                    { sensitivity: "base" }
+                );
+            });
+
+        for (const offCandidate of offCandidates) {
+            if (employeeRequestedDayOff(offCandidate.employee_id, dateValue)) {
+                continue;
+            }
+
+            if (
+                !canReceiveShiftInExistingCell(
+                    offCandidate.employee_id,
+                    dateValue,
+                    currentShift
+                )
+            ) {
+                continue;
+            }
+
+            const snapshot = forceSwapEntryShiftTypes(
+                currentEntry,
+                offCandidate,
+                dateValue,
+                "Troca automática para respeitar folga pedida"
+            );
+
+            if (snapshot) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    function resolvePreferredDayOffConflicts() {
+        const requestKeys = new Set<string>();
+
+        for (const constraint of orderedConstraints) {
+            if (constraint.constraint_type !== "preferred_day_off") {
+                continue;
+            }
+
+            const employee = employeeById.get(constraint.employee_id);
+            if (!employee) {
+                continue;
+            }
+
+            for (const dateValue of scopedConstraintDates(constraint, monthDays)) {
+                const requestKey = buildEntryKey(employee.id, dateValue);
+
+                if (requestKeys.has(requestKey)) {
+                    continue;
+                }
+
+                requestKeys.add(requestKey);
+
+                if (tryResolvePreferredDayOff(employee.id, dateValue)) {
+                    continue;
+                }
+
+                const currentEntry = entriesByCell.get(requestKey);
+                const currentShift = currentEntry
+                    ? shiftTypesById.get(currentEntry.shift_type_id)
+                    : null;
+
+                if (!currentShift || nonWorkShiftCodes.has(currentShift.code)) {
+                    continue;
+                }
+
+                addWarning(
+                    dateValue,
+                    dayOffShift?.id ?? null,
+                    `${employee.name}: folga pedida não pôde ser respeitada automaticamente.`,
+                    employee.id
+                );
+            }
+        }
+    }
+
+    function rebalanceWeekendAssignments() {
+        const maxIterations = employees.length * Math.max(totalWeekendBlocksInMonth, 1) * 2;
+        let iteration = 0;
+
+        while (iteration < maxIterations) {
+            iteration += 1;
+
+            const counts = employees
+                .map((employee) => ({
+                    employeeId: employee.id,
+                    blocks: employeeWeekendBlocksWorked(employee.id),
+                }))
+                .sort((first, second) => first.blocks - second.blocks);
+            const receiver = counts[0];
+            const donor = counts[counts.length - 1];
+
+            if (!receiver || !donor || donor.blocks - receiver.blocks <= 1) {
+                break;
+            }
+
+            const donorEntries = entries
+                .filter(
+                    (entry) =>
+                        entry.employee_id === donor.employeeId &&
+                        weekendDates.has(entry.work_date) &&
+                        entry.shift_type_id === weekendCombinedShiftSafe.id
+                )
+                .sort((first, second) => first.work_date.localeCompare(second.work_date));
+            let swapped = false;
+
+            for (const donorEntry of donorEntries) {
+                const weekendBlock = weekendBlockKeyFromDate(donorEntry.work_date);
+                if (!weekendBlock || employeeWorksWeekendBlock(receiver.employeeId, weekendBlock)) {
+                    continue;
+                }
+
+                const receiverCellKey = buildEntryKey(
+                    receiver.employeeId,
+                    donorEntry.work_date
+                );
+                const receiverEntry = entriesByCell.get(receiverCellKey);
+                const receiverShift = receiverEntry
+                    ? shiftTypesById.get(receiverEntry.shift_type_id)
+                    : null;
+
+                if (
+                    !receiverEntry ||
+                    !receiverShift ||
+                    !nonWorkShiftCodes.has(receiverShift.code) ||
+                    employeeRequestedDayOff(
+                        receiver.employeeId,
+                        donorEntry.work_date
+                    )
+                ) {
+                    continue;
+                }
+
+                if (tryMakeRoomAndSwapWeekend(donorEntry, receiverEntry)) {
+                    swapped = true;
+                    break;
+                }
+            }
+
+            if (!swapped) {
+                break;
+            }
+        }
+
+        // Second pass: balance weekend DAYS to avoid extremes
+        // like one employee with 0 and another with 3+ when avoidable.
+        const totalWeekendDayAssignments = entries.filter(
+            (entry) =>
+                weekendDates.has(entry.work_date) &&
+                entry.shift_type_id === weekendCombinedShiftSafe.id
+        ).length;
+        const averageWeekendDays =
+            employees.length > 0 ? totalWeekendDayAssignments / employees.length : 0;
+        const maxWeekendDaysTarget = Math.max(1, Math.ceil(averageWeekendDays));
+        const maxDayIterations =
+            employees.length * Math.max(totalWeekendDayAssignments, 1) * 2;
+        let dayIteration = 0;
+
+        while (dayIteration < maxDayIterations) {
+            dayIteration += 1;
+
+            const dayCounts = employees
+                .map((employee) => ({
+                    employeeId: employee.id,
+                    days: employeeWeekendDaysWorked(employee.id),
+                }))
+                .sort((first, second) => first.days - second.days);
+            const receiver = dayCounts[0];
+            const donor = dayCounts[dayCounts.length - 1];
+
+            if (
+                !receiver ||
+                !donor ||
+                donor.days <= maxWeekendDaysTarget ||
+                donor.days - receiver.days <= 1
+            ) {
+                break;
+            }
+
+            const donorEntries = entries
+                .filter(
+                    (entry) =>
+                        entry.employee_id === donor.employeeId &&
+                        weekendDates.has(entry.work_date) &&
+                        entry.shift_type_id === weekendCombinedShiftSafe.id
+                )
+                .sort((first, second) => first.work_date.localeCompare(second.work_date));
+            let swapped = false;
+
+            for (const donorEntry of donorEntries) {
+                const blockKey = weekendBlockKeyFromDate(donorEntry.work_date);
+                if (blockKey && employeeWorksWeekendBlock(receiver.employeeId, blockKey)) {
+                    continue;
+                }
+
+                const receiverCellKey = buildEntryKey(
+                    receiver.employeeId,
+                    donorEntry.work_date
+                );
+                const receiverEntry = entriesByCell.get(receiverCellKey);
+                const receiverShift = receiverEntry
+                    ? shiftTypesById.get(receiverEntry.shift_type_id)
+                    : null;
+
+                if (
+                    !receiverEntry ||
+                    !receiverShift ||
+                    !nonWorkShiftCodes.has(receiverShift.code) ||
+                    employeeRequestedDayOff(
+                        receiver.employeeId,
+                        donorEntry.work_date
+                    )
+                ) {
+                    continue;
+                }
+
+                if (tryMakeRoomAndSwapWeekend(donorEntry, receiverEntry)) {
+                    swapped = true;
+                    break;
+                }
+            }
+
+            if (!swapped) {
+                break;
+            }
+        }
+    }
+
+    rebalanceWeekendAssignments();
 
     function tryAssignMedicationShiftOnDate(dateValue: string) {
         if (!medicationSupportShift) {
@@ -3747,6 +4720,10 @@ export async function generateMonthlySchedule(
             );
         }
     }
+
+    resolvePreferredDayOffConflicts();
+    rebalanceWeekendAssignments();
+    resolvePreferredDayOffConflicts();
 
     for (const employee of employees) {
         const assignedDates = assignedDatesByEmployee.get(employee.id) ?? new Set<string>();

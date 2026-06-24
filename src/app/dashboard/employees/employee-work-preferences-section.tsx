@@ -230,7 +230,6 @@ function WorkPreferenceFormFields({
                         "group rounded-md border border-input bg-background px-3 py-2 text-sm",
                         fieldErrors?.weekday && "border-destructive"
                     )}
-                    aria-invalid={Boolean(fieldErrors?.weekday)}
                 >
                     <summary className="cursor-pointer list-none select-none font-medium">
                         Selecionar dias da semana
@@ -282,7 +281,7 @@ function WorkPreferenceFormFields({
                     <p className="text-sm text-destructive">{fieldErrors.weekday}</p>
                 ) : null}
                 <p className="text-xs text-muted-foreground">
-                    Se escolheres dias específicos, "Todos os dias" é ignorado.
+                    Se escolheres dias específicos, &quot;Todos os dias&quot; é ignorado.
                 </p>
             </div>
 

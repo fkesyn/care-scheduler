@@ -112,14 +112,16 @@ export function NewScheduleDialog({
         }
     }, [router, setOpen, visibleState.scheduleId, visibleState.status]);
 
-    useEffect(() => {
-        if (!open) {
+    function handleOpenChange(nextOpen: boolean) {
+        setOpen(nextOpen);
+
+        if (nextOpen) {
             setSelectedMonth(defaultMonth);
         }
-    }, [defaultMonth, open]);
+    }
 
     return (
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={handleOpenChange}>
             <DialogTrigger asChild>
                 <Button>
                     <CalendarPlusIcon />
