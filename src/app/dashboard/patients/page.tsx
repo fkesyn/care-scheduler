@@ -66,9 +66,13 @@ function PatientProfileBadges({ patient }: { patient: Patient }) {
     }
 
     return (
-        <div className="flex min-w-36 flex-wrap gap-1 whitespace-normal">
+        <div className="flex w-28 flex-col items-start gap-1">
             {badges.map((badge) => (
-                <Badge key={badge} variant="secondary">
+                <Badge
+                    key={badge}
+                    variant="secondary"
+                    className="w-full justify-start truncate"
+                >
                     {badge}
                 </Badge>
             ))}
@@ -223,7 +227,7 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
                             Não há utentes visíveis para este filtro.
                         </div>
                     ) : (
-                        <Table className="min-w-[1040px]">
+                        <Table className="min-w-[760px]">
                             <TableHeader>
                                 <TableRow className="bg-muted/50">
                                     <TableHead>Nome</TableHead>
@@ -231,11 +235,9 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
                                     <TableHead>Centro de Saúde</TableHead>
                                     <TableHead>Médico de Família</TableHead>
                                     <TableHead>N.º Utente</TableHead>
-                                    <TableHead>Contactos</TableHead>
                                     <TableHead>Local</TableHead>
-                                    <TableHead>Perfil</TableHead>
-                                    <TableHead>Estado</TableHead>
-                                    <TableHead className="text-right">Ações</TableHead>
+                                    <TableHead className="w-28">Perfil</TableHead>
+                                    <TableHead className="w-12 text-right">Ações</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -260,33 +262,15 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
                                             <TableCell className="text-muted-foreground">
                                                 {patient.patient_number || "-"}
                                             </TableCell>
-                                            <TableCell>
-                                                {contacts.length > 0 ? (
-                                                    <Badge variant="secondary">
-                                                        {contacts.length}
-                                                    </Badge>
-                                                ) : (
-                                                    <span className="text-muted-foreground">-</span>
-                                                )}
-                                            </TableCell>
                                             <TableCell className="text-muted-foreground">
                                                 {patient.location_id
                                                     ? locationNameById.get(patient.location_id) ?? "-"
                                                     : "-"}
                                             </TableCell>
-                                            <TableCell className="whitespace-normal">
+                                            <TableCell className="w-28 max-w-28 align-middle">
                                                 <PatientProfileBadges patient={patient} />
                                             </TableCell>
-                                            <TableCell>
-                                                <Badge
-                                                    variant={
-                                                        patient.active ? "secondary" : "outline"
-                                                    }
-                                                >
-                                                    {patient.active ? "Ativo" : "Inativo"}
-                                                </Badge>
-                                            </TableCell>
-                                            <TableCell>
+                                            <TableCell className="w-12 align-middle">
                                                 <PatientRowActions
                                                     familyContacts={contacts}
                                                     patient={patient}

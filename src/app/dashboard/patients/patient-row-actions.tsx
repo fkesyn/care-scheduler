@@ -103,7 +103,7 @@ export function PatientRowActions({
     const deleteDialog = useActionDialog(deleteState, deleteInitialState);
 
     return (
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-col items-end gap-1">
             <FamilyContactsDialog
                 contacts={familyContacts}
                 patientId={patient.id}

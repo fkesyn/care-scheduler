@@ -101,8 +101,7 @@ export function NewAppointmentDialog({
     const { closeDialog, open, setOpen, showFormAgain, visibleState } =
         useActionDialog(state, initialState);
     const formRef = useRef<HTMLFormElement>(null);
-    const isDisabled =
-        employees.length === 0 || patients.length === 0 || services.length === 0;
+    const isDisabled = patients.length === 0 || services.length === 0;
 
     useEffect(() => {
         if (visibleState.status === "success") {
@@ -158,10 +157,9 @@ export function NewAppointmentDialog({
                                     : undefined
                             }
                             aria-invalid={Boolean(visibleState.fieldErrors?.employeeId)}
-                            required
                         >
-                            <option value="" disabled>
-                                Escolher pessoa
+                            <option value="">
+                                Sem responsável atribuído
                             </option>
                             {employees.map((employee) => (
                                 <option key={employee.id} value={employee.id}>

@@ -24,7 +24,7 @@ export default async function DashboardLayout({
 
     return (
         <main className="min-h-full bg-background">
-            <div className="border-b bg-card">
+            <div className="border-b bg-card print:hidden">
                 <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex flex-col gap-3">
                         <div>

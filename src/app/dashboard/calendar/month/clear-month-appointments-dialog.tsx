@@ -22,8 +22,15 @@ import { Spinner } from "@/components/ui/spinner";
 import { useActionDialog } from "@/lib/use-action-dialog";
 import { cn } from "@/lib/utils";
 
+type LocationOption = {
+    id: string;
+    name: string;
+};
+
 type ClearMonthAppointmentsDialogProps = {
     selectedDate: string;
+    selectedLocationId: string;
+    locations: LocationOption[];
 };
 
 const initialState: DeleteMonthlyAppointmentsState = {
@@ -59,8 +66,11 @@ function DeleteButton() {
 
 export function ClearMonthAppointmentsDialog({
     selectedDate,
+    selectedLocationId,
+    locations,
 }: ClearMonthAppointmentsDialogProps) {
     const monthValue = selectedDate.slice(0, 7);
+    const defaultLocationId = selectedLocationId || "all";
     const [state, formAction] = useActionState(
         deleteMonthlyAppointments,
         initialState
@@ -82,7 +92,7 @@ export function ClearMonthAppointmentsDialog({
                 <DialogHeader>
                     <DialogTitle>Limpar marcações do mês</DialogTitle>
                     <DialogDescription>
-                        Esta ação apaga todas as marcações de{" "}
+                        Esta ação apaga marcações de{" "}
                         {formatMonthLabel(monthValue)}.
                     </DialogDescription>
                 </DialogHeader>
@@ -105,9 +115,48 @@ export function ClearMonthAppointmentsDialog({
                     <form action={formAction} className="grid gap-4">
                         <input type="hidden" name="month" value={monthValue} />
 
+                        <div className="grid gap-2">
+                            <label
+                                htmlFor="clear-month-location"
+                                className="text-sm font-medium"
+                            >
+                                Local
+                            </label>
+                            <select
+                                id="clear-month-location"
+                                name="location_id"
+                                defaultValue={defaultLocationId}
+                                className="h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                aria-describedby={
+                                    visibleState.fieldErrors?.locationId
+                                        ? "clear-month-location-error"
+                                        : undefined
+                                }
+                                aria-invalid={Boolean(
+                                    visibleState.fieldErrors?.locationId
+                                )}
+                            >
+                                <option value="all">Todos os locais</option>
+                                {locations.map((location) => (
+                                    <option key={location.id} value={location.id}>
+                                        {location.name}
+                                    </option>
+                                ))}
+                            </select>
+                            {visibleState.fieldErrors?.locationId ? (
+                                <p
+                                    id="clear-month-location-error"
+                                    className="text-sm text-destructive"
+                                >
+                                    {visibleState.fieldErrors.locationId}
+                                </p>
+                            ) : null}
+                        </div>
+
                         <p className="text-sm text-muted-foreground">
-                            Vais apagar todas as marcações deste mês. Os utentes,
-                            funcionários, serviços e locais não serão apagados.
+                            Vais apagar as marcações do mês para o local escolhido.
+                            Os utentes, funcionários, serviços e locais não serão
+                            apagados.
                         </p>
 
                         {visibleState.message ? (

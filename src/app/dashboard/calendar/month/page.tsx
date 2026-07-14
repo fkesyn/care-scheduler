@@ -19,6 +19,8 @@ import {
     MonthNavigationProvider,
 } from "./month-navigation";
 import { MonthlyScheduleDialog } from "./monthly-schedule-dialog";
+import { PrintMonthButton } from "./print-month-button";
+import { calendarServiceLabel } from "../service-display";
 
 type MonthPageProps = {
     searchParams: Promise<{
@@ -474,9 +476,9 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
 
     return (
         <MonthNavigationProvider currentHref={buildMonthHref({})}>
-            <div className="p-6">
-            <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
-                <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="p-6 print:p-0">
+            <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 print:max-w-none print:gap-3">
+                <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between print:hidden">
                     <div>
                         <h1 className="text-2xl font-semibold">Calendário mensal</h1>
                         <p className="text-sm capitalize text-muted-foreground">
@@ -513,7 +515,7 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                     </div>
                 </header>
 
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 print:hidden">
                     <div className="flex flex-wrap gap-2">
                         <MonthlyScheduleDialog
                             selectedDate={selectedDate}
@@ -531,7 +533,11 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                                 hasUnassignedAppointments={hasUnassignedAppointments}
                             />
                         ) : null}
-                        <ClearMonthAppointmentsDialog selectedDate={selectedDate} />
+                        <ClearMonthAppointmentsDialog
+                            selectedDate={selectedDate}
+                            selectedLocationId={selectedLocationId}
+                            locations={locationRows}
+                        />
                     </div>
 
                     <div className="flex flex-wrap gap-2">
@@ -541,23 +547,33 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                                 Exportar Excel
                             </Link>
                         </Button>
+                        <PrintMonthButton />
                         <ImportMonthAppointmentsDialog />
                     </div>
                 </div>
 
-                <MonthFilters
-                    selectedDate={selectedDate}
-                    selectedLocationId={selectedLocationId}
-                    selectedEmployeeId={selectedEmployeeId}
-                    selectedPatientId={selectedPatientId}
-                    selectedServiceId={selectedServiceId}
-                    locations={locationRows}
-                    employees={employeeRows}
-                    patients={patientRows}
-                    services={serviceRows}
-                />
+                <div className="print:hidden">
+                    <MonthFilters
+                        selectedDate={selectedDate}
+                        selectedLocationId={selectedLocationId}
+                        selectedEmployeeId={selectedEmployeeId}
+                        selectedPatientId={selectedPatientId}
+                        selectedServiceId={selectedServiceId}
+                        locations={locationRows}
+                        employees={employeeRows}
+                        patients={patientRows}
+                        services={serviceRows}
+                    />
+                </div>
 
-                <section className="overflow-hidden rounded-lg border bg-card shadow-xs">
+                <div className="hidden text-center print:block">
+                    <h1 className="text-lg font-semibold">Calendário mensal</h1>
+                    <p className="text-sm capitalize text-muted-foreground">
+                        {formatMonthLabel(selectedDate)}
+                    </p>
+                </div>
+
+                <section className="overflow-hidden rounded-lg border bg-card shadow-xs print:rounded-none print:shadow-none">
                     <div className="grid grid-cols-7 border-b bg-muted/50 text-center text-xs font-medium text-muted-foreground">
                         {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((day) => (
                             <div key={day} className="p-3">
@@ -621,7 +637,7 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                                                 >
                                                     <div className="flex min-w-0 items-center gap-1">
                                                         <span
-                                                            className="min-w-0 truncate"
+                                                            className="w-full min-w-0 whitespace-normal break-words leading-tight"
                                                             style={{
                                                                 color:
                                                                     group.patientNameColor ??
@@ -651,8 +667,9 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                                                                             }
                                                                         />
                                                                         <span className="min-w-0 truncate">
-                                                                            {service?.name ??
-                                                                                "Serviço"}
+                                                                            {calendarServiceLabel(
+                                                                                service?.name
+                                                                            )}
                                                                         </span>
                                                                     </span>
                                                                 );

@@ -38,6 +38,7 @@ export type DeleteMonthlyAppointmentsState = {
     message?: string;
     fieldErrors?: {
         month?: string;
+        locationId?: string;
     };
 };
 
@@ -126,8 +127,8 @@ export async function createAppointment(
 
     const fieldErrors: CreateAppointmentState["fieldErrors"] = {};
 
-    if (!employeeId) {
-        fieldErrors.employeeId = "Escolhe quem vai fazer o serviço.";
+    if (employeeId && !uuidPattern.test(employeeId)) {
+        fieldErrors.employeeId = "Escolhe um funcionário válido.";
     }
 
     if (!patientId) {
@@ -163,7 +164,7 @@ export async function createAppointment(
     }
 
     const { error } = await supabase.rpc("create_appointment", {
-        p_employee_id: employeeId,
+        p_employee_id: employeeId || null,
         p_patient_id: patientId,
         p_service_id: serviceId,
         p_scheduled_date: scheduledDate,
@@ -387,14 +388,27 @@ export async function deleteMonthlyAppointments(
     formData: FormData
 ): Promise<DeleteMonthlyAppointmentsState> {
     const month = String(formData.get("month") ?? "").trim();
+    const locationId = String(formData.get("location_id") ?? "all").trim();
+
+    const fieldErrors: DeleteMonthlyAppointmentsState["fieldErrors"] = {};
 
     if (!monthPattern.test(month)) {
+        fieldErrors.month = "Mês inválido.";
+    }
+
+    if (
+        locationId &&
+        locationId !== "all" &&
+        !uuidPattern.test(locationId)
+    ) {
+        fieldErrors.locationId = "Local inválido.";
+    }
+
+    if (Object.keys(fieldErrors).length > 0) {
         return {
             status: "error",
-            message: "Escolhe um mês válido.",
-            fieldErrors: {
-                month: "Mês inválido.",
-            },
+            message: "Confirma os campos obrigatórios.",
+            fieldErrors,
         };
     }
 
@@ -425,14 +439,61 @@ export async function deleteMonthlyAppointments(
     const daysInMonth = new Date(year, monthNumber, 0).getDate();
     const startDate = formatDateValue(year, monthNumber, 1);
     const endDate = formatDateValue(year, monthNumber, daysInMonth);
-
-    const { data, error } = await supabase
+    let deleteQuery = supabase
         .from("appointments")
         .delete()
         .eq("organization_id", organizationId)
         .gte("scheduled_date", startDate)
-        .lte("scheduled_date", endDate)
-        .select("id");
+        .lte("scheduled_date", endDate);
+
+    let selectedLocationName: string | null = null;
+
+    if (locationId !== "all") {
+        const { data: location, error: locationError } = await supabase
+            .from("locations")
+            .select("id, name")
+            .eq("id", locationId)
+            .eq("organization_id", organizationId)
+            .maybeSingle();
+
+        if (locationError || !location) {
+            return {
+                status: "error",
+                message: "O local escolhido já não está disponível.",
+                fieldErrors: {
+                    locationId: "Escolhe um local válido.",
+                },
+            };
+        }
+
+        selectedLocationName = String(location.name);
+
+        const { data: patients, error: patientsError } = await supabase
+            .from("patients")
+            .select("id")
+            .eq("organization_id", organizationId)
+            .eq("location_id", locationId);
+
+        if (patientsError) {
+            return {
+                status: "error",
+                message: `Não consegui carregar os utentes deste local: ${patientsError.message}`,
+            };
+        }
+
+        const patientIds = (patients ?? []).map((patient) => String(patient.id));
+
+        if (patientIds.length === 0) {
+            return {
+                status: "success",
+                message: `Não havia utentes para limpar em ${selectedLocationName}.`,
+            };
+        }
+
+        deleteQuery = deleteQuery.in("patient_id", patientIds);
+    }
+
+    const { data, error } = await deleteQuery.select("id");
 
     if (error) {
         return {
@@ -450,8 +511,12 @@ export async function deleteMonthlyAppointments(
         status: "success",
         message:
             deletedCount === 0
-                ? "Não havia marcações para apagar neste mês."
-                : `${deletedCount} marcações apagadas deste mês.`,
+                ? locationId === "all"
+                    ? "Não havia marcações para apagar neste mês."
+                    : `Não havia marcações para apagar em ${selectedLocationName} neste mês.`
+                : locationId === "all"
+                  ? `${deletedCount} marcações apagadas deste mês.`
+                  : `${deletedCount} marcações apagadas de ${selectedLocationName} neste mês.`,
     };
 }
 

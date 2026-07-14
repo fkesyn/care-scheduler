@@ -14,6 +14,7 @@ import {
     type AppointmentPatientOption,
     type AppointmentServiceOption,
 } from "./new-appointment-dialog";
+import { calendarServiceLabel } from "./service-display";
 
 type CalendarPageProps = {
     searchParams: Promise<{
@@ -399,7 +400,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             patientNameColor,
             scheduledDate: appointment.scheduled_date,
             serviceId: service?.id ?? null,
-            serviceName: service?.name ?? "Serviço removido",
+            serviceName: calendarServiceLabel(service?.name, "Serviço removido"),
             status: appointment.status,
             createdBy: profileLabel(createdProfile),
             updatedBy: profileLabel(updatedProfile),
