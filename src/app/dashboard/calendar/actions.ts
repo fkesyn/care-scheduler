@@ -85,10 +85,19 @@ type PatientRow = {
     is_diabetic: boolean | null;
 };
 
+type LocationCapacityRow = {
+    id: string;
+    name: string;
+};
+
 type ExistingPatientAppointmentRow = {
     scheduled_date: string;
     patient_id: string | null;
     service_id: string | null;
+};
+
+type ExistingCapacityAppointmentRow = {
+    scheduled_date: string;
 };
 
 async function getExistingProfileId(
@@ -113,6 +122,67 @@ function formatDateValue(year: number, month: number, day: number) {
         2,
         "0"
     )}`;
+}
+
+function formatCountLabel(count: number, singular: string, plural: string) {
+    return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function normalizeLocationName(value: string) {
+    return value
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+}
+
+function isSaoFranciscoSantoAntonioCapacityGroup(locationName: string) {
+    const normalizedName = normalizeLocationName(locationName);
+
+    return (
+        normalizedName.includes("s francisco") ||
+        normalizedName.includes("sao francisco") ||
+        normalizedName.includes("sto antonio") ||
+        normalizedName.includes("santo antonio")
+    );
+}
+
+async function getLocationCapacityScope(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    organizationId: string,
+    selectedLocation: LocationCapacityRow
+) {
+    if (!isSaoFranciscoSantoAntonioCapacityGroup(selectedLocation.name)) {
+        return {
+            locationIds: [selectedLocation.id],
+            isGrouped: false,
+        };
+    }
+
+    const { data, error } = await supabase
+        .from("locations")
+        .select("id, name")
+        .eq("organization_id", organizationId)
+        .eq("active", true);
+
+    if (error) {
+        throw new Error(error.message);
+    }
+
+    const groupedLocationIds = ((data ?? []) as LocationCapacityRow[])
+        .filter((location) =>
+            isSaoFranciscoSantoAntonioCapacityGroup(location.name)
+        )
+        .map((location) => location.id);
+
+    return {
+        locationIds:
+            groupedLocationIds.length > 0
+                ? Array.from(new Set(groupedLocationIds))
+                : [selectedLocation.id],
+        isGrouped: groupedLocationIds.length > 1,
+    };
 }
 
 export async function createAppointment(
@@ -747,7 +817,7 @@ export async function createMonthlyAppointments(
         await Promise.all([
             supabase
                 .from("locations")
-                .select("id")
+                .select("id, name")
                 .eq("id", locationId)
                 .eq("active", true)
                 .maybeSingle(),
@@ -785,6 +855,26 @@ export async function createMonthlyAppointments(
         return {
             status: "error",
             message: "O funcionário escolhido já não está disponível.",
+        };
+    }
+
+    let capacityScope: {
+        locationIds: string[];
+        isGrouped: boolean;
+    };
+
+    try {
+        capacityScope = await getLocationCapacityScope(
+            supabase,
+            organizationId,
+            location as LocationCapacityRow
+        );
+    } catch (error) {
+        return {
+            status: "error",
+            message: `Não consegui validar locais agrupados: ${
+                error instanceof Error ? error.message : "erro desconhecido"
+            }`,
         };
     }
 
@@ -840,23 +930,67 @@ export async function createMonthlyAppointments(
     const startDate = formatDateValue(year, monthNumber, startDay);
     const endDate = formatDateValue(year, monthNumber, endDay);
 
+    const { data: capacityPatients, error: capacityPatientsError } = await supabase
+        .from("patients")
+        .select("id")
+        .eq("organization_id", organizationId)
+        .in("location_id", capacityScope.locationIds);
+
+    if (capacityPatientsError) {
+        return {
+            status: "error",
+            message: `Não consegui validar utentes dos locais agrupados: ${capacityPatientsError.message}`,
+        };
+    }
+
+    const capacityPatientIds = (capacityPatients ?? []).map((patient) =>
+        String(patient.id)
+    );
+
+    const [existingPatientAppointmentsResult, existingCapacityAppointmentsResult] =
+        await Promise.all([
+            supabase
+                .from("appointments")
+                .select("scheduled_date, patient_id, service_id")
+                .in(
+                    "patient_id",
+                    patientRows.map((patient) => patient.id)
+                )
+                .gte("scheduled_date", startDate)
+                .lte("scheduled_date", endDate)
+                .neq("status", "canceled")
+                .order("scheduled_date"),
+            capacityPatientIds.length > 0
+                ? supabase
+                      .from("appointments")
+                      .select("scheduled_date")
+                      .eq("organization_id", organizationId)
+                      .eq("service_id", serviceId)
+                      .in("patient_id", capacityPatientIds)
+                      .gte("scheduled_date", startDate)
+                      .lte("scheduled_date", endDate)
+                      .neq("status", "canceled")
+                : Promise.resolve({ data: [], error: null }),
+        ]);
+
     const { data: existingPatientAppointments, error: existingPatientAppointmentsError } =
-        await supabase
-            .from("appointments")
-            .select("scheduled_date, patient_id, service_id")
-            .in(
-                "patient_id",
-                patientRows.map((patient) => patient.id)
-            )
-            .gte("scheduled_date", startDate)
-            .lte("scheduled_date", endDate)
-            .neq("status", "canceled")
-            .order("scheduled_date");
+        existingPatientAppointmentsResult;
+    const {
+        data: existingCapacityAppointments,
+        error: existingCapacityAppointmentsError,
+    } = existingCapacityAppointmentsResult;
 
     if (existingPatientAppointmentsError) {
         return {
             status: "error",
             message: `Não consegui validar marcações existentes dos utentes: ${existingPatientAppointmentsError.message}`,
+        };
+    }
+
+    if (existingCapacityAppointmentsError) {
+        return {
+            status: "error",
+            message: `Não consegui validar capacidade dos locais agrupados: ${existingCapacityAppointmentsError.message}`,
         };
     }
 
@@ -903,6 +1037,21 @@ export async function createMonthlyAppointments(
         };
     }
 
+    for (const appointment of (existingCapacityAppointments ??
+        []) as ExistingCapacityAppointmentRow[]) {
+        if (!allowedDateSet.has(appointment.scheduled_date)) {
+            continue;
+        }
+
+        const remainingCapacity =
+            remainingCapacityByDate.get(appointment.scheduled_date) ?? 0;
+
+        remainingCapacityByDate.set(
+            appointment.scheduled_date,
+            remainingCapacity - 1
+        );
+    }
+
     const existingDatesByPatient = new Map<string, Set<string>>();
     const existingSameServiceByPatient = new Map<string, Set<string>>();
 
@@ -929,8 +1078,49 @@ export async function createMonthlyAppointments(
         }
     }
 
-    const auditProfileId = await getExistingProfileId(supabase, user.id);
     let skippedDuplicateCount = 0;
+    const patientsToSchedule: PatientRow[] = [];
+
+    for (const patient of patientRows) {
+        const sameServiceDates = existingSameServiceByPatient.get(patient.id);
+        const alreadyHasSameService = Array.from(sameServiceDates ?? []).some(
+            (dateValue) => allowedDateSet.has(dateValue)
+        );
+
+        if (alreadyHasSameService) {
+            skippedDuplicateCount += 1;
+            continue;
+        }
+
+        patientsToSchedule.push(patient);
+    }
+
+    const availableSlotCount = Array.from(remainingCapacityByDate.values()).reduce(
+        (total, remainingCapacity) => total + Math.max(0, remainingCapacity),
+        0
+    );
+
+    if (patientsToSchedule.length > availableSlotCount) {
+        const patientsLabel = formatCountLabel(
+            patientsToSchedule.length,
+            "utente selecionado",
+            "utentes selecionados"
+        );
+        const slotsLabel = formatCountLabel(
+            availableSlotCount,
+            "vaga disponível",
+            "vagas disponíveis"
+        );
+
+        return {
+            status: "error",
+            message: capacityScope.isGrouped
+                ? `Tens ${patientsLabel} para marcar, mas só há ${slotsLabel} nos dias escolhidos, contando S. Francisco e Sto António em conjunto. Aumenta o intervalo, aumenta os utentes por dia, ou tira utentes da seleção. Nada foi criado.`
+                : `Tens ${patientsLabel} para marcar, mas só há ${slotsLabel} nos dias escolhidos. Aumenta o intervalo, aumenta os utentes por dia, ou tira utentes da seleção. Nada foi criado.`,
+        };
+    }
+
+    const auditProfileId = await getExistingProfileId(supabase, user.id);
 
     function tryCreateAppointmentForDate(patient: PatientRow, dateValue: string) {
         const remainingCapacity = remainingCapacityByDate.get(dateValue) ?? 0;
@@ -959,17 +1149,7 @@ export async function createMonthlyAppointments(
 
     const patientsForFallback: PatientRow[] = [];
 
-    for (const patient of patientRows) {
-        const sameServiceDates = existingSameServiceByPatient.get(patient.id);
-        const alreadyHasSameService = Array.from(sameServiceDates ?? []).some(
-            (dateValue) => allowedDateSet.has(dateValue)
-        );
-
-        if (alreadyHasSameService) {
-            skippedDuplicateCount += 1;
-            continue;
-        }
-
+    for (const patient of patientsToSchedule) {
         const existingDates = Array.from(
             existingDatesByPatient.get(patient.id) ?? []
         )
@@ -992,7 +1172,9 @@ export async function createMonthlyAppointments(
         if (!scheduled) {
             return {
                 status: "error",
-                message: `Não há capacidade diária para ${patient.name} nos dias escolhidos. Nada foi criado.`,
+                message: capacityScope.isGrouped
+                    ? `Não há capacidade diária para ${patient.name} nos dias escolhidos, contando S. Francisco e Sto António em conjunto. Nada foi criado.`
+                    : `Não há capacidade diária para ${patient.name} nos dias escolhidos. Nada foi criado.`,
             };
         }
     }
