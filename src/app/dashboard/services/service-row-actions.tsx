@@ -36,6 +36,7 @@ type Service = {
 };
 
 type ServiceRowActionsProps = {
+    canManage: boolean;
     service: Service;
 };
 
@@ -67,7 +68,7 @@ function DeleteButton() {
     );
 }
 
-export function ServiceRowActions({ service }: ServiceRowActionsProps) {
+export function ServiceRowActions({ canManage, service }: ServiceRowActionsProps) {
     const [updateState, updateAction] = useActionState(
         updateService,
         updateInitialState
@@ -92,6 +93,7 @@ export function ServiceRowActions({ service }: ServiceRowActionsProps) {
                 </Link>
             </Button>
 
+            {canManage ? (
             <Dialog open={updateDialog.open} onOpenChange={updateDialog.setOpen}>
                 <DialogTrigger asChild>
                     <Button size="icon-sm" variant="ghost" aria-label="Editar serviço">
@@ -223,7 +225,9 @@ export function ServiceRowActions({ service }: ServiceRowActionsProps) {
                     )}
                 </DialogContent>
             </Dialog>
+            ) : null}
 
+            {canManage ? (
             <Dialog open={deleteDialog.open} onOpenChange={deleteDialog.setOpen}>
                 <DialogTrigger asChild>
                     <Button size="icon-sm" variant="ghost" aria-label="Apagar serviço">
@@ -277,6 +281,7 @@ export function ServiceRowActions({ service }: ServiceRowActionsProps) {
                     )}
                 </DialogContent>
             </Dialog>
+            ) : null}
         </div>
     );
 }

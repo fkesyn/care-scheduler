@@ -57,6 +57,7 @@ type Patient = {
 };
 
 type PatientRowActionsProps = {
+    canManage: boolean;
     familyContacts: FamilyContact[];
     clinicalRecords: PatientClinicalRecord[];
     patient: Patient;
@@ -92,6 +93,7 @@ function DeleteButton() {
 }
 
 export function PatientRowActions({
+    canManage,
     familyContacts,
     clinicalRecords,
     patient,
@@ -111,6 +113,7 @@ export function PatientRowActions({
     return (
         <div className="flex flex-col items-end gap-1">
             <FamilyContactsDialog
+                canManage={canManage}
                 contacts={familyContacts}
                 patientId={patient.id}
                 patientName={patient.name}
@@ -121,6 +124,7 @@ export function PatientRowActions({
                 records={clinicalRecords}
             />
 
+            {canManage ? (
             <Dialog open={updateDialog.open} onOpenChange={updateDialog.setOpen}>
                 <DialogTrigger asChild>
                     <Button size="icon-sm" variant="ghost" aria-label="Editar utente">
@@ -317,7 +321,9 @@ export function PatientRowActions({
                     )}
                 </DialogContent>
             </Dialog>
+            ) : null}
 
+            {canManage ? (
             <Dialog open={deleteDialog.open} onOpenChange={deleteDialog.setOpen}>
                 <DialogTrigger asChild>
                     <Button size="icon-sm" variant="ghost" aria-label="Apagar utente">
@@ -371,6 +377,7 @@ export function PatientRowActions({
                     )}
                 </DialogContent>
             </Dialog>
+            ) : null}
         </div>
     );
 }

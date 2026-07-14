@@ -7,6 +7,7 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
+import { canManageData, getCurrentUserRole } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { NewScheduleDialog } from "./new-schedule-dialog";
 import { ScheduleRowActions } from "./schedule-row-actions";
@@ -59,6 +60,8 @@ function normalizeLocationNameForMatch(value: string) {
 
 export default async function SchedulesPage() {
     await connection();
+    const role = await getCurrentUserRole();
+    const canManage = canManageData(role);
     const supabase = await createClient();
 
     const [
@@ -125,11 +128,13 @@ export default async function SchedulesPage() {
                         </p>
                     </div>
 
-                    <NewScheduleDialog
-                        defaultMonth={currentMonthValue()}
-                        defaultLocationId={defaultLocation?.id ?? null}
-                        locations={locationRows}
-                    />
+                    {canManage ? (
+                        <NewScheduleDialog
+                            defaultMonth={currentMonthValue()}
+                            defaultLocationId={defaultLocation?.id ?? null}
+                            locations={locationRows}
+                        />
+                    ) : null}
                 </header>
 
                 <section className="overflow-hidden rounded-lg border bg-card shadow-xs">
@@ -159,7 +164,10 @@ export default async function SchedulesPage() {
                                                 )}
                                             </TableCell>
                                             <TableCell>
-                                                <ScheduleRowActions schedule={schedule} />
+                                                <ScheduleRowActions
+                                                    canManage={canManage}
+                                                    schedule={schedule}
+                                                />
                                             </TableCell>
                                         </TableRow>
                                     );

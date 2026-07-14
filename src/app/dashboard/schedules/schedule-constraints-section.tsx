@@ -65,6 +65,7 @@ export type ScheduleConstraintRow = {
 };
 
 type ScheduleConstraintsSectionProps = {
+    canManage?: boolean;
     constraints: ScheduleConstraintRow[];
     employees: ScheduleConstraintEmployee[];
     monthEnd: string;
@@ -734,6 +735,7 @@ function ConstraintRowActions({
 }
 
 export function ScheduleConstraintsSection({
+    canManage = true,
     constraints,
     employees,
     monthEnd,
@@ -769,7 +771,7 @@ export function ScheduleConstraintsSection({
                     </p>
                 </div>
 
-                {showHeaderActions ? (
+                {showHeaderActions && canManage ? (
                     <div className="flex flex-wrap gap-2">
                         <ImportConstraintsDialog
                             employees={employees}
@@ -873,14 +875,16 @@ export function ScheduleConstraintsSection({
                                                         ) : null}
                                                     </div>
 
-                                                    <ConstraintRowActions
-                                                        constraint={constraint}
-                                                        employees={employees}
-                                                        monthEnd={monthEnd}
-                                                        monthStart={monthStart}
-                                                        scheduleId={scheduleId}
-                                                        shiftTypes={shiftTypes}
-                                                    />
+                                                    {canManage ? (
+                                                        <ConstraintRowActions
+                                                            constraint={constraint}
+                                                            employees={employees}
+                                                            monthEnd={monthEnd}
+                                                            monthStart={monthStart}
+                                                            scheduleId={scheduleId}
+                                                            shiftTypes={shiftTypes}
+                                                        />
+                                                    ) : null}
                                                 </div>
                                             );
                                         })}

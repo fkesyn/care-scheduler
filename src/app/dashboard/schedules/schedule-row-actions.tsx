@@ -27,6 +27,7 @@ type ScheduleListItem = {
 };
 
 type ScheduleRowActionsProps = {
+    canManage: boolean;
     schedule: ScheduleListItem;
 };
 
@@ -44,7 +45,7 @@ function DeleteButton() {
     );
 }
 
-export function ScheduleRowActions({ schedule }: ScheduleRowActionsProps) {
+export function ScheduleRowActions({ canManage, schedule }: ScheduleRowActionsProps) {
     const [deleteState, deleteAction] = useActionState(
         deleteMonthlySchedule,
         deleteInitialState
@@ -59,6 +60,7 @@ export function ScheduleRowActions({ schedule }: ScheduleRowActionsProps) {
                 </Link>
             </Button>
 
+            {canManage ? (
             <Dialog open={deleteDialog.open} onOpenChange={deleteDialog.setOpen}>
                 <DialogTrigger asChild>
                     <Button size="icon-sm" variant="ghost" aria-label="Apagar horário">
@@ -112,6 +114,7 @@ export function ScheduleRowActions({ schedule }: ScheduleRowActionsProps) {
                     )}
                 </DialogContent>
             </Dialog>
+            ) : null}
         </div>
     );
 }

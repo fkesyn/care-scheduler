@@ -56,6 +56,7 @@ export type ScheduleGridConstraint = {
 };
 
 type ScheduleGridProps = {
+    canManage: boolean;
     constraints: ScheduleGridConstraint[];
     days: ScheduleGridDay[];
     employees: ScheduleGridEmployee[];
@@ -264,6 +265,7 @@ function evaluateCell(
 }
 
 export function ScheduleGrid({
+    canManage,
     constraints,
     days,
     employees,
@@ -341,6 +343,10 @@ export function ScheduleGrid({
         nextShiftTypeId: string,
         previousShiftTypeId: string
     ) {
+        if (!canManage) {
+            return;
+        }
+
         setSavingCellKey(cellKey);
         setErrorMessage(null);
         setLocalValues((current) => ({
@@ -379,6 +385,10 @@ export function ScheduleGrid({
     }
 
     function moveEmployeeBeforeTarget(draggedId: string, targetId: string) {
+        if (!canManage) {
+            return;
+        }
+
         if (!draggedId || !targetId || draggedId === targetId) {
             return;
         }
@@ -429,7 +439,9 @@ export function ScheduleGrid({
             <div className="flex flex-col gap-1 border-b p-4">
                 <h2 className="text-base font-semibold">Grelha mensal</h2>
                 <p className="text-sm text-muted-foreground">
-                    Clica numa célula para escolher turno ou limpar com “-”.
+                    {canManage
+                        ? "Clica numa célula para escolher turno ou limpar com “-”."
+                        : "Modo consulta: a grelha está bloqueada para edição."}
                 </p>
                 {errorMessage ? (
                     <p
@@ -497,7 +509,7 @@ export function ScheduleGrid({
                                     )}
                                     style={{ gridTemplateColumns }}
                                     onDragOver={(event) => {
-                                        if (!draggedEmployeeId) {
+                                        if (!canManage || !draggedEmployeeId) {
                                             return;
                                         }
 
@@ -507,7 +519,7 @@ export function ScheduleGrid({
                                     onDrop={(event) => {
                                         event.preventDefault();
 
-                                        if (!draggedEmployeeId) {
+                                        if (!canManage || !draggedEmployeeId) {
                                             return;
                                         }
 
@@ -525,26 +537,29 @@ export function ScheduleGrid({
                                 >
                                     <div className="sticky left-0 z-10 border-r bg-card p-3">
                                         <div className="flex min-w-0 items-start gap-2">
-                                            <button
-                                                type="button"
-                                                aria-label={`Reordenar ${employee.name}`}
-                                                className="mt-0.5 cursor-grab rounded-sm p-1 text-muted-foreground hover:bg-muted active:cursor-grabbing"
-                                                draggable
-                                                onDragStart={(event) => {
-                                                    event.dataTransfer.effectAllowed = "move";
-                                                    setDraggedEmployeeId(employee.id);
-                                                    setDragOverEmployeeId(employee.id);
-                                                }}
-                                                onDragEnd={() => {
-                                                    setDraggedEmployeeId(null);
-                                                    setDragOverEmployeeId(null);
-                                                }}
-                                            >
-                                                <GripVerticalIcon
-                                                    className="size-4"
-                                                    aria-hidden="true"
-                                                />
-                                            </button>
+                                            {canManage ? (
+                                                <button
+                                                    type="button"
+                                                    aria-label={`Reordenar ${employee.name}`}
+                                                    className="mt-0.5 cursor-grab rounded-sm p-1 text-muted-foreground hover:bg-muted active:cursor-grabbing"
+                                                    draggable
+                                                    onDragStart={(event) => {
+                                                        event.dataTransfer.effectAllowed =
+                                                            "move";
+                                                        setDraggedEmployeeId(employee.id);
+                                                        setDragOverEmployeeId(employee.id);
+                                                    }}
+                                                    onDragEnd={() => {
+                                                        setDraggedEmployeeId(null);
+                                                        setDragOverEmployeeId(null);
+                                                    }}
+                                                >
+                                                    <GripVerticalIcon
+                                                        className="size-4"
+                                                        aria-hidden="true"
+                                                    />
+                                                </button>
+                                            ) : null}
                                             <div className="flex min-w-0 flex-col gap-1">
                                                 <span className="truncate text-sm font-medium">
                                                     {employee.name}
@@ -614,7 +629,7 @@ export function ScheduleGrid({
                                                         evaluation.hasConflict &&
                                                             "border-amber-400 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40"
                                                     )}
-                                                    disabled={Boolean(savingCellKey)}
+                                                    disabled={!canManage || Boolean(savingCellKey)}
                                                     value={selectedShiftTypeId}
                                                     onChange={(event) => {
                                                         mutateCell(

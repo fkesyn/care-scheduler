@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { FileDownIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { canManageData, getCurrentUserRole } from "@/lib/auth/permissions";
 import { getHolidayForDateFromList } from "@/lib/holidays/get-holiday-for-date";
 import { buildStaticPortugueseHolidays } from "@/lib/holidays/static-portuguese-holidays";
 import { syncPortugueseHolidays } from "@/lib/holidays/sync-portuguese-holidays";
@@ -166,6 +167,8 @@ export default async function ScheduleDetailPage({
         notFound();
     }
 
+    const role = await getCurrentUserRole();
+    const canManage = canManageData(role);
     const supabase = await createClient();
     const { data: scheduleData, error: scheduleError } = await supabase
         .from("monthly_schedules")
@@ -476,13 +479,17 @@ export default async function ScheduleDetailPage({
                     </div>
                 </section>
 
-                <GenerationWarningsSection warnings={generationWarningRows} />
+                <GenerationWarningsSection
+                    canManage={canManage}
+                    warnings={generationWarningRows}
+                />
 
                 <ScheduleGrid
                     constraints={gridConstraints}
                     days={gridDays}
                     employees={gridEmployees}
                     entries={gridEntries}
+                    canManage={canManage}
                     scheduleId={schedule.id}
                     shiftTypes={gridShiftTypes}
                 />
@@ -490,7 +497,9 @@ export default async function ScheduleDetailPage({
                 <section className="rounded-lg border bg-card p-4 shadow-xs">
                     <div className="grid gap-3">
                         <div className="flex flex-wrap gap-2">
-                            <GenerateScheduleDialog scheduleId={schedule.id} />
+                            {canManage ? (
+                                <GenerateScheduleDialog scheduleId={schedule.id} />
+                            ) : null}
                             <Button asChild variant="outline">
                                 <Link
                                     href={`/dashboard/schedules/${schedule.id}/print`}
@@ -503,33 +512,37 @@ export default async function ScheduleDetailPage({
                             </Button>
                         </div>
 
-                        <div className="flex flex-wrap gap-2">
-                            <NewConstraintDialog
-                                employees={constraintEmployees}
-                                monthEnd={endValue}
-                                monthStart={startValue}
-                                scheduleId={schedule.id}
-                                shiftTypes={constraintShiftTypes}
-                            />
-                            <ImportConstraintsDialog
-                                employees={constraintEmployees}
-                                monthEnd={endValue}
-                                monthStart={startValue}
-                                scheduleId={schedule.id}
-                                shiftTypes={constraintShiftTypes}
-                            />
-                        </div>
+                        {canManage ? (
+                            <>
+                                <div className="flex flex-wrap gap-2">
+                                    <NewConstraintDialog
+                                        employees={constraintEmployees}
+                                        monthEnd={endValue}
+                                        monthStart={startValue}
+                                        scheduleId={schedule.id}
+                                        shiftTypes={constraintShiftTypes}
+                                    />
+                                    <ImportConstraintsDialog
+                                        employees={constraintEmployees}
+                                        monthEnd={endValue}
+                                        monthStart={startValue}
+                                        scheduleId={schedule.id}
+                                        shiftTypes={constraintShiftTypes}
+                                    />
+                                </div>
 
-                        <div className="flex flex-wrap gap-2">
-                            <ClearConstraintsDialog
-                                constraintsCount={constraintRows.length}
-                                scheduleId={schedule.id}
-                            />
-                            <ClearScheduleGridDialog
-                                entriesCount={entryRows.length}
-                                scheduleId={schedule.id}
-                            />
-                        </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <ClearConstraintsDialog
+                                        constraintsCount={constraintRows.length}
+                                        scheduleId={schedule.id}
+                                    />
+                                    <ClearScheduleGridDialog
+                                        entriesCount={entryRows.length}
+                                        scheduleId={schedule.id}
+                                    />
+                                </div>
+                            </>
+                        ) : null}
                     </div>
                 </section>
 
@@ -538,6 +551,7 @@ export default async function ScheduleDetailPage({
                     employees={constraintEmployees}
                     monthEnd={endValue}
                     monthStart={startValue}
+                    canManage={canManage}
                     scheduleId={schedule.id}
                     showHeaderActions={false}
                     shiftTypes={constraintShiftTypes}

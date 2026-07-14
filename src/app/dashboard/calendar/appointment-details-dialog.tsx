@@ -60,6 +60,7 @@ export type AppointmentDetails = {
 
 type AppointmentDetailsDialogProps = {
     appointment: AppointmentDetails;
+    canManage?: boolean;
     employees: AppointmentEmployeeOption[];
     patients: AppointmentPatientOption[];
     services: AppointmentServiceOption[];
@@ -172,6 +173,7 @@ function selectClassName(hasError: boolean) {
 
 export function AppointmentDetailsDialog({
     appointment,
+    canManage = true,
     employees,
     patients,
     services,
@@ -330,7 +332,86 @@ export function AppointmentDetailsDialog({
                     </DialogDescription>
                 </DialogHeader>
 
-                {visibleDeleteState.status === "success" ? (
+                {!canManage ? (
+                    <div className="grid gap-4">
+                        <div className="grid gap-3 rounded-md border p-3 text-sm">
+                            <div className="flex flex-wrap items-center gap-2">
+                                <Badge variant={statusBadgeVariant(appointment.status)}>
+                                    {statusLabel(appointment.status)}
+                                </Badge>
+                                {appointment.locationName ? (
+                                    <Badge variant="outline">
+                                        {appointment.locationName}
+                                    </Badge>
+                                ) : null}
+                                {appointment.measurementLabel ? (
+                                    <Badge variant="outline">
+                                        {appointment.measurementLabel}
+                                    </Badge>
+                                ) : null}
+                            </div>
+
+                            <p className="text-muted-foreground">
+                                {appointment.employeeLabel ??
+                                    "Sem responsável atribuído"}
+                            </p>
+
+                            {appointment.notes ? (
+                                <div className="grid gap-1">
+                                    <span className="font-medium">Notas</span>
+                                    <p className="text-muted-foreground">
+                                        {appointment.notes}
+                                    </p>
+                                </div>
+                            ) : null}
+
+                            {appointment.clinicalRecord?.bloodPressureValue ? (
+                                <div className="grid gap-1">
+                                    <span className="font-medium">
+                                        Valor da tensão arterial
+                                    </span>
+                                    <p className="text-muted-foreground">
+                                        {
+                                            appointment.clinicalRecord
+                                                .bloodPressureValue
+                                        }
+                                    </p>
+                                </div>
+                            ) : null}
+
+                            {appointment.clinicalRecord?.woundCharacteristics ? (
+                                <div className="grid gap-1">
+                                    <span className="font-medium">
+                                        Características da ferida
+                                    </span>
+                                    <p className="whitespace-pre-wrap text-muted-foreground">
+                                        {
+                                            appointment.clinicalRecord
+                                                .woundCharacteristics
+                                        }
+                                    </p>
+                                </div>
+                            ) : null}
+
+                            {appointment.clinicalRecord?.woundTreatment ? (
+                                <div className="grid gap-1">
+                                    <span className="font-medium">
+                                        Tratamento realizado
+                                    </span>
+                                    <p className="whitespace-pre-wrap text-muted-foreground">
+                                        {appointment.clinicalRecord.woundTreatment}
+                                    </p>
+                                </div>
+                            ) : null}
+                        </div>
+
+                        <DialogFooter>
+                            <Button type="button" onClick={closeDialog}>
+                                Fechar
+                            </Button>
+                        </DialogFooter>
+                    </div>
+                ) : visibleDeleteState.status === "success" ? (
                     <div className="grid gap-4">
                         <p
                             className="rounded-md border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900 dark:border-emerald-900/40 dark:bg-emerald-950/40 dark:text-emerald-100"

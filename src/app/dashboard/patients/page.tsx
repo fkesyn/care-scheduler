@@ -11,6 +11,7 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
+import { canManageData, getCurrentUserRole } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import type { PatientClinicalRecord } from "./clinical-records-dialog";
 import type { FamilyContact } from "./family-contacts-dialog";
@@ -114,6 +115,8 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
     await connection();
 
     const { location } = await searchParams;
+    const role = await getCurrentUserRole();
+    const canManage = canManageData(role);
     const supabase = await createClient();
 
     const { data: locations, error: locationsError } = await supabase
@@ -286,10 +289,12 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
                                     : "utentes visíveis"}
                             </p>
                         </div>
-                        <NewPatientDialog
-                            locations={locationRows}
-                            selectedLocation={selectedLocation}
-                        />
+                        {canManage ? (
+                            <NewPatientDialog
+                                locations={locationRows}
+                                selectedLocation={selectedLocation}
+                            />
+                        ) : null}
                     </div>
 
                     <div className="flex flex-wrap gap-2">
@@ -369,6 +374,7 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
                                             </TableCell>
                                             <TableCell className="w-12 align-middle">
                                                 <PatientRowActions
+                                                    canManage={canManage}
                                                     familyContacts={contacts}
                                                     clinicalRecords={
                                                         clinicalPatientRecords

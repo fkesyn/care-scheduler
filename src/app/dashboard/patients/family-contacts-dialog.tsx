@@ -34,6 +34,7 @@ export type FamilyContact = {
 };
 
 type FamilyContactsDialogProps = {
+    canManage: boolean;
     contacts: FamilyContact[];
     patientId: string;
     patientName: string;
@@ -156,7 +157,13 @@ function CreateContactForm({ patientId }: { patientId: string }) {
     );
 }
 
-function FamilyContactCard({ contact }: { contact: FamilyContact }) {
+function FamilyContactCard({
+    canManage,
+    contact,
+}: {
+    canManage: boolean;
+    contact: FamilyContact;
+}) {
     const [isEditing, setIsEditing] = useState(false);
     const [updateState, updateAction] = useActionState(
         updateFamilyContact,
@@ -268,22 +275,28 @@ function FamilyContactCard({ contact }: { contact: FamilyContact }) {
                 </p>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-                <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setIsEditing(true)}
-                >
-                    <PencilIcon />
-                    Editar
-                </Button>
-                <form action={deleteAction}>
-                    <input type="hidden" name="id" value={contact.id} />
-                    <input type="hidden" name="patient_id" value={contact.patient_id} />
-                    <DeleteContactButton />
-                </form>
-            </div>
+            {canManage ? (
+                <div className="flex flex-wrap gap-2">
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setIsEditing(true)}
+                    >
+                        <PencilIcon />
+                        Editar
+                    </Button>
+                    <form action={deleteAction}>
+                        <input type="hidden" name="id" value={contact.id} />
+                        <input
+                            type="hidden"
+                            name="patient_id"
+                            value={contact.patient_id}
+                        />
+                        <DeleteContactButton />
+                    </form>
+                </div>
+            ) : null}
 
             {deleteState.message ? (
                 <p className="text-sm text-destructive sm:col-span-2" role="alert">
@@ -295,6 +308,7 @@ function FamilyContactCard({ contact }: { contact: FamilyContact }) {
 }
 
 export function FamilyContactsDialog({
+    canManage,
     contacts,
     patientId,
     patientName,
@@ -313,7 +327,7 @@ export function FamilyContactsDialog({
                 </DialogHeader>
 
                 <div className="grid gap-5">
-                    <CreateContactForm patientId={patientId} />
+                    {canManage ? <CreateContactForm patientId={patientId} /> : null}
 
                     <div className="grid gap-3">
                         <div className="flex items-center justify-between gap-3">
@@ -329,7 +343,11 @@ export function FamilyContactsDialog({
                             </div>
                         ) : (
                             contacts.map((contact) => (
-                                <FamilyContactCard key={contact.id} contact={contact} />
+                                <FamilyContactCard
+                                    key={contact.id}
+                                    canManage={canManage}
+                                    contact={contact}
+                                />
                             ))
                         )}
                     </div>

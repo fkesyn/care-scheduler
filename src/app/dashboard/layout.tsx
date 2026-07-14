@@ -3,7 +3,9 @@ import { connection } from "next/server";
 
 import { logout } from "@/app/login/actions";
 import { DashboardNav } from "@/app/dashboard/dashboard-nav";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { getCurrentUserRole } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function DashboardLayout({
@@ -22,6 +24,8 @@ export default async function DashboardLayout({
         redirect("/login?next=/dashboard/locations");
     }
 
+    const role = await getCurrentUserRole();
+
     return (
         <main className="min-h-full bg-background">
             <div className="border-b bg-card print:hidden">
@@ -31,7 +35,14 @@ export default async function DashboardLayout({
                             <p className="text-xs font-medium uppercase text-muted-foreground">
                                 Care Scheduler
                             </p>
-                            <p className="text-sm text-muted-foreground">{user.email}</p>
+                            <div className="mt-1 flex flex-wrap items-center gap-2">
+                                <p className="text-sm text-muted-foreground">
+                                    {user.email}
+                                </p>
+                                <Badge variant={role === "admin" ? "secondary" : "outline"}>
+                                    {role === "admin" ? "Admin" : "Consulta"}
+                                </Badge>
+                            </div>
                         </div>
                         <DashboardNav />
                     </div>

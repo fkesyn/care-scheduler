@@ -9,6 +9,7 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
+import { canManageData, getCurrentUserRole } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { NewServiceDialog } from "./new-service-dialog";
 import { ServiceRowActions } from "./service-row-actions";
@@ -41,6 +42,8 @@ function measurementLabel(type: string | null) {
 export default async function ServicesPage() {
     await connection();
 
+    const role = await getCurrentUserRole();
+    const canManage = canManageData(role);
     const supabase = await createClient();
     const { data: services, error } = await supabase
         .from("services")
@@ -79,7 +82,7 @@ export default async function ServicesPage() {
                                 : "serviços configurados"}
                         </p>
                     </div>
-                    <NewServiceDialog />
+                    {canManage ? <NewServiceDialog /> : null}
                 </header>
 
                 <section className="rounded-lg border bg-card shadow-xs">
@@ -125,7 +128,10 @@ export default async function ServicesPage() {
                                             </Badge>
                                         </TableCell>
                                         <TableCell>
-                                            <ServiceRowActions service={service} />
+                                            <ServiceRowActions
+                                                canManage={canManage}
+                                                service={service}
+                                            />
                                         </TableCell>
                                     </TableRow>
                                 );

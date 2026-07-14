@@ -11,6 +11,7 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
+import { canManageData, getCurrentUserRole } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { EmployeeRowActions } from "./employee-row-actions";
 import { NewEmployeeDialog } from "./new-employee-dialog";
@@ -45,6 +46,8 @@ function roleLabel(role: string) {
 export default async function EmployeesPage() {
     await connection();
 
+    const role = await getCurrentUserRole();
+    const canManage = canManageData(role);
     const supabase = await createClient();
     const { data: employees, error } = await supabase
         .from("employees")
@@ -88,7 +91,7 @@ export default async function EmployeesPage() {
                                 : "pessoas registadas"}
                         </p>
                     </div>
-                    <NewEmployeeDialog />
+                    {canManage ? <NewEmployeeDialog /> : null}
                 </header>
 
                 <section className="rounded-lg border bg-card shadow-xs">
@@ -105,22 +108,32 @@ export default async function EmployeesPage() {
                                     <TableHead>Contacto</TableHead>
                                     <TableHead>Cédula</TableHead>
                                     <TableHead>Estado</TableHead>
-                                    <TableHead className="text-right">
-                                        Preferências fixas
-                                    </TableHead>
-                                    <TableHead className="text-right">Ações</TableHead>
+                                    {canManage ? (
+                                        <>
+                                            <TableHead className="text-right">
+                                                Preferências fixas
+                                            </TableHead>
+                                            <TableHead className="text-right">
+                                                Ações
+                                            </TableHead>
+                                        </>
+                                    ) : null}
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {employeeRows.map((employee) => (
                                     <TableRow key={employee.id}>
                                         <TableCell className="font-medium">
-                                            <Link
-                                                href={`/dashboard/employees/${employee.id}`}
-                                                className="hover:underline"
-                                            >
-                                                {employee.name}
-                                            </Link>
+                                            {canManage ? (
+                                                <Link
+                                                    href={`/dashboard/employees/${employee.id}`}
+                                                    className="hover:underline"
+                                                >
+                                                    {employee.name}
+                                                </Link>
+                                            ) : (
+                                                employee.name
+                                            )}
                                         </TableCell>
                                         <TableCell>
                                             <Badge
@@ -148,18 +161,26 @@ export default async function EmployeesPage() {
                                                 {employee.active ? "Ativo" : "Inativo"}
                                             </Badge>
                                         </TableCell>
-                                        <TableCell className="text-right">
-                                            <Button asChild size="sm" variant="outline">
-                                                <Link
-                                                    href={`/dashboard/employees/${employee.id}`}
-                                                >
-                                                    Configurar
-                                                </Link>
-                                            </Button>
-                                        </TableCell>
-                                        <TableCell>
-                                            <EmployeeRowActions employee={employee} />
-                                        </TableCell>
+                                        {canManage ? (
+                                            <>
+                                                <TableCell className="text-right">
+                                                    <Button
+                                                        asChild
+                                                        size="sm"
+                                                        variant="outline"
+                                                    >
+                                                        <Link
+                                                            href={`/dashboard/employees/${employee.id}`}
+                                                        >
+                                                            Configurar
+                                                        </Link>
+                                                    </Button>
+                                                </TableCell>
+                                                <TableCell>
+                                                    <EmployeeRowActions employee={employee} />
+                                                </TableCell>
+                                            </>
+                                        ) : null}
                                     </TableRow>
                                 ))}
                             </TableBody>

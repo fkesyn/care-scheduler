@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { Button } from "@/components/ui/button";
+import { canManageData, getCurrentUserRole } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import {
     AppointmentDetailsDialog,
@@ -269,6 +270,8 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             ? params.date
             : formatDateInput(new Date());
 
+    const role = await getCurrentUserRole();
+    const canManage = canManageData(role);
     const supabase = await createClient();
 
     const [
@@ -463,12 +466,14 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                             </p>
                         </div>
 
-                        <NewAppointmentDialog
-                            employees={employeeOptions}
-                            patients={patientOptions}
-                            services={serviceOptions}
-                            selectedDate={selectedDate}
-                        />
+                        {canManage ? (
+                            <NewAppointmentDialog
+                                employees={employeeOptions}
+                                patients={patientOptions}
+                                services={serviceOptions}
+                                selectedDate={selectedDate}
+                            />
+                        ) : null}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
@@ -558,6 +563,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                                                 patients={patientOptions}
                                                 services={serviceOptions}
                                                 appointment={appointment}
+                                                canManage={canManage}
                                                 triggerVariant="groupItem"
                                             />
                                         ))}

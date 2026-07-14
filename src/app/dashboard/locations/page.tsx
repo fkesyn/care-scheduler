@@ -9,6 +9,7 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
+import { canManageData, getCurrentUserRole } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { LocationRowActions } from "./location-row-actions";
 import { NewLocationDialog } from "./new-location-dialog";
@@ -24,6 +25,8 @@ type Location = {
 export default async function LocationsPage() {
     await connection();
 
+    const role = await getCurrentUserRole();
+    const canManage = canManageData(role);
     const supabase = await createClient();
     const { data: locations, error } = await supabase
         .from("locations")
@@ -56,7 +59,7 @@ export default async function LocationsPage() {
                                 : "locais registados"}
                         </p>
                     </div>
-                    <NewLocationDialog />
+                    {canManage ? <NewLocationDialog /> : null}
                 </header>
 
                 <section className="rounded-lg border bg-card shadow-xs">
@@ -72,7 +75,9 @@ export default async function LocationsPage() {
                                     <TableHead>Cor</TableHead>
                                     <TableHead>Estado</TableHead>
                                     <TableHead>Criado em</TableHead>
-                                    <TableHead className="text-right">Ações</TableHead>
+                                    {canManage ? (
+                                        <TableHead className="text-right">Ações</TableHead>
+                                    ) : null}
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -103,9 +108,11 @@ export default async function LocationsPage() {
                                                 }).format(new Date(location.created_at))
                                                 : "-"}
                                         </TableCell>
-                                        <TableCell>
-                                            <LocationRowActions location={location} />
-                                        </TableCell>
+                                        {canManage ? (
+                                            <TableCell>
+                                                <LocationRowActions location={location} />
+                                            </TableCell>
+                                        ) : null}
                                     </TableRow>
                                 ))}
                             </TableBody>

@@ -33,6 +33,7 @@ type GenerationWarningRow = {
 };
 
 type GenerationWarningsSectionProps = {
+    canManage: boolean;
     warnings: GenerationWarningRow[];
 };
 
@@ -69,7 +70,13 @@ function ResolveButton({ resolved }: { resolved: boolean }) {
     );
 }
 
-function WarningRow({ warning }: { warning: GenerationWarningRow }) {
+function WarningRow({
+    canManage,
+    warning,
+}: {
+    canManage: boolean;
+    warning: GenerationWarningRow;
+}) {
     const [state, action] = useActionState(
         setScheduleGenerationWarningResolved,
         initialState
@@ -99,26 +106,35 @@ function WarningRow({ warning }: { warning: GenerationWarningRow }) {
                 </Badge>
             </div>
             <p className="text-sm text-muted-foreground">{warning.message}</p>
-            <div className="flex items-center justify-between gap-2">
-                <form action={action}>
-                    <input type="hidden" name="warning_id" value={warning.id} />
-                    <input type="hidden" name="schedule_id" value={warning.schedule_id} />
-                    <input
-                        type="hidden"
-                        name="resolved"
-                        value={warning.resolved ? "false" : "true"}
-                    />
-                    <ResolveButton resolved={warning.resolved} />
-                </form>
-                {state.status === "error" && state.message ? (
-                    <p className="text-xs text-destructive">{state.message}</p>
-                ) : null}
-            </div>
+            {canManage ? (
+                <div className="flex items-center justify-between gap-2">
+                    <form action={action}>
+                        <input type="hidden" name="warning_id" value={warning.id} />
+                        <input
+                            type="hidden"
+                            name="schedule_id"
+                            value={warning.schedule_id}
+                        />
+                        <input
+                            type="hidden"
+                            name="resolved"
+                            value={warning.resolved ? "false" : "true"}
+                        />
+                        <ResolveButton resolved={warning.resolved} />
+                    </form>
+                    {state.status === "error" && state.message ? (
+                        <p className="text-xs text-destructive">{state.message}</p>
+                    ) : null}
+                </div>
+            ) : null}
         </div>
     );
 }
 
-export function GenerationWarningsSection({ warnings }: GenerationWarningsSectionProps) {
+export function GenerationWarningsSection({
+    canManage,
+    warnings,
+}: GenerationWarningsSectionProps) {
     const [showResolved, setShowResolved] = useState(false);
     const unresolvedCount = useMemo(
         () => warnings.filter((warning) => !warning.resolved).length,
@@ -164,7 +180,11 @@ export function GenerationWarningsSection({ warnings }: GenerationWarningsSectio
             ) : (
                 <div className="grid gap-2">
                     {visibleWarnings.map((warning) => (
-                        <WarningRow key={warning.id} warning={warning} />
+                        <WarningRow
+                            key={warning.id}
+                            canManage={canManage}
+                            warning={warning}
+                        />
                     ))}
                 </div>
             )}

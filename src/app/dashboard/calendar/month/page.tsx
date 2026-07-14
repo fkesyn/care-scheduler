@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { CheckSquareIcon, DownloadIcon, XIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { canManageData, getCurrentUserRole } from "@/lib/auth/permissions";
 import {
     getHolidayForDateFromList,
     getHolidaysForDateRange,
@@ -230,6 +231,8 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
 
     const { days, startValue, endValue } = buildMonthDays(selectedDate);
 
+    const role = await getCurrentUserRole();
+    const canManage = canManageData(role);
     const supabase = await createClient();
     const selectedYear = Number(selectedDate.slice(0, 4));
 
@@ -516,29 +519,31 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                 </header>
 
                 <div className="flex flex-col gap-2 print:hidden">
-                    <div className="flex flex-wrap gap-2">
-                        <MonthlyScheduleDialog
-                            selectedDate={selectedDate}
-                            selectedLocationId={selectedLocationId}
-                            locations={locationRows}
-                            employees={employeeRows}
-                            patients={patientRows}
-                            services={serviceRows}
-                        />
-                        {hasMonthAppointments ? (
-                            <ChangeMonthStatusDialog
+                    {canManage ? (
+                        <div className="flex flex-wrap gap-2">
+                            <MonthlyScheduleDialog
                                 selectedDate={selectedDate}
-                                services={monthBulkServices}
-                                employees={monthBulkEmployees}
-                                hasUnassignedAppointments={hasUnassignedAppointments}
+                                selectedLocationId={selectedLocationId}
+                                locations={locationRows}
+                                employees={employeeRows}
+                                patients={patientRows}
+                                services={serviceRows}
                             />
-                        ) : null}
-                        <ClearMonthAppointmentsDialog
-                            selectedDate={selectedDate}
-                            selectedLocationId={selectedLocationId}
-                            locations={locationRows}
-                        />
-                    </div>
+                            {hasMonthAppointments ? (
+                                <ChangeMonthStatusDialog
+                                    selectedDate={selectedDate}
+                                    services={monthBulkServices}
+                                    employees={monthBulkEmployees}
+                                    hasUnassignedAppointments={hasUnassignedAppointments}
+                                />
+                            ) : null}
+                            <ClearMonthAppointmentsDialog
+                                selectedDate={selectedDate}
+                                selectedLocationId={selectedLocationId}
+                                locations={locationRows}
+                            />
+                        </div>
+                    ) : null}
 
                     <div className="flex flex-wrap gap-2">
                         <Button asChild size="sm" variant="outline">
@@ -548,7 +553,7 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                             </Link>
                         </Button>
                         <PrintMonthButton />
-                        <ImportMonthAppointmentsDialog />
+                        {canManage ? <ImportMonthAppointmentsDialog /> : null}
                     </div>
                 </div>
 
