@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { createClient } from "@/lib/supabase/server";
+import { clinicalRecordTypeForService } from "./service-display";
 
 export type CreateAppointmentState = {
     status: "idle" | "success" | "error";
@@ -25,6 +26,9 @@ export type UpdateAppointmentState = {
         serviceId?: string;
         scheduledDate?: string;
         appointmentStatus?: string;
+        bloodPressureValue?: string;
+        woundCharacteristics?: string;
+        woundTreatment?: string;
     };
 };
 
@@ -100,6 +104,19 @@ type ExistingCapacityAppointmentRow = {
     scheduled_date: string;
 };
 
+type ClinicalRecordUpsert = {
+    organization_id: string;
+    appointment_id: string;
+    patient_id: string;
+    service_id: string;
+    employee_id: string | null;
+    record_date: string;
+    record_type: "blood_pressure" | "wound_care";
+    blood_pressure_value: string | null;
+    wound_characteristics: string | null;
+    wound_treatment: string | null;
+};
+
 async function getExistingProfileId(
     supabase: Awaited<ReturnType<typeof createClient>>,
     userId: string
@@ -126,6 +143,10 @@ function formatDateValue(year: number, month: number, day: number) {
 
 function formatCountLabel(count: number, singular: string, plural: string) {
     return `${count} ${count === 1 ? singular : plural}`;
+}
+
+function hasTextValue(value: string) {
+    return value.trim().length > 0;
 }
 
 function normalizeLocationName(value: string) {
@@ -270,6 +291,13 @@ export async function updateAppointmentDetails(
     const scheduledDate = String(formData.get("scheduled_date") ?? "").trim();
     const appointmentStatus = String(formData.get("status") ?? "").trim();
     const notes = String(formData.get("notes") ?? "").trim();
+    const bloodPressureValue = String(
+        formData.get("blood_pressure_value") ?? ""
+    ).trim();
+    const woundCharacteristics = String(
+        formData.get("wound_characteristics") ?? ""
+    ).trim();
+    const woundTreatment = String(formData.get("wound_treatment") ?? "").trim();
 
     const fieldErrors: UpdateAppointmentState["fieldErrors"] = {};
 
@@ -295,6 +323,20 @@ export async function updateAppointmentDetails(
 
     if (!appointmentStatuses.has(appointmentStatus)) {
         fieldErrors.appointmentStatus = "Escolhe um estado válido.";
+    }
+
+    if (bloodPressureValue.length > 80) {
+        fieldErrors.bloodPressureValue = "O valor de TA é demasiado longo.";
+    }
+
+    if (woundCharacteristics.length > 2000) {
+        fieldErrors.woundCharacteristics =
+            "As características da ferida são demasiado longas.";
+    }
+
+    if (woundTreatment.length > 2000) {
+        fieldErrors.woundTreatment =
+            "O tratamento realizado é demasiado longo.";
     }
 
     if (Object.keys(fieldErrors).length > 0) {
@@ -327,7 +369,7 @@ export async function updateAppointmentDetails(
                 .maybeSingle(),
             supabase
                 .from("services")
-                .select("id, measurement_type")
+                .select("id, name, measurement_type")
                 .eq("id", serviceId)
                 .eq("active", true)
                 .maybeSingle(),
@@ -362,7 +404,12 @@ export async function updateAppointmentDetails(
         };
     }
 
-    if (service.measurement_type === "glucose" && !patient.is_diabetic) {
+    const clinicalRecordType = clinicalRecordTypeForService(
+        service.name,
+        service.measurement_type
+    );
+
+    if (clinicalRecordType === "glucose" && !patient.is_diabetic) {
         return {
             status: "error",
             message:
@@ -372,7 +419,7 @@ export async function updateAppointmentDetails(
 
     const auditProfileId = await getExistingProfileId(supabase, user.id);
 
-    const { error } = await supabase
+    const { data: updatedAppointment, error } = await supabase
         .from("appointments")
         .update({
             employee_id: employeeId || null,
@@ -387,7 +434,7 @@ export async function updateAppointmentDetails(
             ...(auditProfileId ? { updated_by: auditProfileId } : {}),
         })
         .eq("id", appointmentId)
-        .select("id")
+        .select("id, organization_id")
         .single();
 
     if (error) {
@@ -397,7 +444,69 @@ export async function updateAppointmentDetails(
         };
     }
 
+    const shouldKeepBloodPressureRecord =
+        clinicalRecordType === "blood_pressure" && hasTextValue(bloodPressureValue);
+    const shouldKeepWoundRecord =
+        clinicalRecordType === "wound_care" &&
+        (hasTextValue(woundCharacteristics) || hasTextValue(woundTreatment));
+
+    if (shouldKeepBloodPressureRecord || shouldKeepWoundRecord) {
+        const clinicalRecord: ClinicalRecordUpsert =
+            clinicalRecordType === "blood_pressure"
+                ? {
+                      organization_id: updatedAppointment.organization_id,
+                      appointment_id: appointmentId,
+                      patient_id: patientId,
+                      service_id: serviceId,
+                      employee_id: employeeId || null,
+                      record_date: scheduledDate,
+                      record_type: "blood_pressure",
+                      blood_pressure_value: bloodPressureValue,
+                      wound_characteristics: null,
+                      wound_treatment: null,
+                  }
+                : {
+                      organization_id: updatedAppointment.organization_id,
+                      appointment_id: appointmentId,
+                      patient_id: patientId,
+                      service_id: serviceId,
+                      employee_id: employeeId || null,
+                      record_date: scheduledDate,
+                      record_type: "wound_care",
+                      blood_pressure_value: null,
+                      wound_characteristics: woundCharacteristics || null,
+                      wound_treatment: woundTreatment || null,
+                  };
+
+        const { error: clinicalRecordError } = await supabase
+            .from("appointment_clinical_records")
+            .upsert(clinicalRecord, {
+                onConflict: "appointment_id",
+            });
+
+        if (clinicalRecordError) {
+            return {
+                status: "error",
+                message: `Marcação atualizada, mas não consegui guardar o registo clínico: ${clinicalRecordError.message}`,
+            };
+        }
+    } else {
+        const { error: deleteClinicalRecordError } = await supabase
+            .from("appointment_clinical_records")
+            .delete()
+            .eq("appointment_id", appointmentId);
+
+        if (deleteClinicalRecordError) {
+            return {
+                status: "error",
+                message: `Marcação atualizada, mas não consegui limpar o registo clínico antigo: ${deleteClinicalRecordError.message}`,
+            };
+        }
+    }
+
     revalidatePath("/dashboard/calendar");
+    revalidatePath("/dashboard/patients");
+    revalidatePath("/dashboard/services");
 
     return {
         status: "success",
@@ -823,7 +932,7 @@ export async function createMonthlyAppointments(
                 .maybeSingle(),
             supabase
                 .from("services")
-                .select("id, measurement_type")
+                .select("id, name, measurement_type")
                 .eq("id", serviceId)
                 .eq("active", true)
                 .maybeSingle(),
@@ -916,8 +1025,13 @@ export async function createMonthlyAppointments(
         };
     }
 
+    const monthlyClinicalRecordType = clinicalRecordTypeForService(
+        service.name,
+        service.measurement_type
+    );
+
     if (
-        service.measurement_type === "glucose" &&
+        monthlyClinicalRecordType === "glucose" &&
         patientRows.some((patient) => !patient.is_diabetic)
     ) {
         return {

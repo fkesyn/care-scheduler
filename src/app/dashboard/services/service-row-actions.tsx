@@ -1,6 +1,7 @@
 "use client";
 
-import { PencilIcon, Trash2Icon } from "lucide-react";
+import Link from "next/link";
+import { FileTextIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import type { ReactNode } from "react";
 import { useActionState } from "react";
 import { useFormStatus } from "react-dom";
@@ -80,6 +81,17 @@ export function ServiceRowActions({ service }: ServiceRowActionsProps) {
 
     return (
         <div className="flex justify-end gap-2">
+            <Button
+                asChild
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Ver registos do serviço"
+            >
+                <Link href={`/dashboard/services/${service.id}/records`}>
+                    <FileTextIcon />
+                </Link>
+            </Button>
+
             <Dialog open={updateDialog.open} onOpenChange={updateDialog.setOpen}>
                 <DialogTrigger asChild>
                     <Button size="icon-sm" variant="ghost" aria-label="Editar serviço">
@@ -170,6 +182,7 @@ export function ServiceRowActions({ service }: ServiceRowActionsProps) {
                                     <option value="">Sem medição</option>
                                     <option value="blood_pressure">Tensão arterial</option>
                                     <option value="glucose">Glicémia</option>
+                                    <option value="wound_care">Tratamento de feridas</option>
                                 </select>
                             </div>
 

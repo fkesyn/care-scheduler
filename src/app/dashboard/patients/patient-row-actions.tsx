@@ -27,6 +27,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { useActionDialog } from "@/lib/use-action-dialog";
 import { cn } from "@/lib/utils";
 import {
+    ClinicalRecordsDialog,
+    type PatientClinicalRecord,
+} from "./clinical-records-dialog";
+import {
     FamilyContactsDialog,
     type FamilyContact,
 } from "./family-contacts-dialog";
@@ -54,6 +58,7 @@ type Patient = {
 
 type PatientRowActionsProps = {
     familyContacts: FamilyContact[];
+    clinicalRecords: PatientClinicalRecord[];
     patient: Patient;
     locations: LocationOption[];
 };
@@ -88,6 +93,7 @@ function DeleteButton() {
 
 export function PatientRowActions({
     familyContacts,
+    clinicalRecords,
     patient,
     locations,
 }: PatientRowActionsProps) {
@@ -108,6 +114,11 @@ export function PatientRowActions({
                 contacts={familyContacts}
                 patientId={patient.id}
                 patientName={patient.name}
+            />
+            <ClinicalRecordsDialog
+                patientId={patient.id}
+                patientName={patient.name}
+                records={clinicalRecords}
             />
 
             <Dialog open={updateDialog.open} onOpenChange={updateDialog.setOpen}>

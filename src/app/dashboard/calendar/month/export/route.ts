@@ -128,6 +128,10 @@ function measurementLabel(type: string | null | undefined) {
         return "Glicémia";
     }
 
+    if (type === "wound_care") {
+        return "Ferida";
+    }
+
     return "";
 }
 

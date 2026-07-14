@@ -14,7 +14,10 @@ import {
     type AppointmentPatientOption,
     type AppointmentServiceOption,
 } from "./new-appointment-dialog";
-import { calendarServiceLabel } from "./service-display";
+import {
+    calendarServiceLabel,
+    clinicalRecordTypeForService,
+} from "./service-display";
 
 type CalendarPageProps = {
     searchParams: Promise<{
@@ -77,6 +80,13 @@ type AppointmentProfile = {
     email: string | null;
 };
 
+type AppointmentClinicalRecord = {
+    record_type: string;
+    blood_pressure_value: string | null;
+    wound_characteristics: string | null;
+    wound_treatment: string | null;
+};
+
 type Appointment = {
     id: string;
     scheduled_date: string;
@@ -87,6 +97,10 @@ type Appointment = {
     services: AppointmentService | AppointmentService[] | null;
     created_profile: AppointmentProfile | AppointmentProfile[] | null;
     updated_profile: AppointmentProfile | AppointmentProfile[] | null;
+    appointment_clinical_records:
+        | AppointmentClinicalRecord
+        | AppointmentClinicalRecord[]
+        | null;
 };
 
 type AppointmentGroup = {
@@ -134,6 +148,10 @@ function measurementLabel(type: string | null | undefined) {
 
     if (type === "glucose") {
         return "Glicémia";
+    }
+
+    if (type === "wound_care") {
+        return "Ferida";
     }
 
     return null;
@@ -306,6 +324,12 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
           updated_profile:profiles!appointments_updated_by_fkey (
             full_name,
             email
+          ),
+          appointment_clinical_records (
+            record_type,
+            blood_pressure_value,
+            wound_characteristics,
+            wound_treatment
           )
         `
             )
@@ -369,7 +393,10 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
         (service) => ({
             id: service.id,
             name: service.name,
-            measurementType: service.measurement_type,
+            measurementType: clinicalRecordTypeForService(
+                service.name,
+                service.measurement_type
+            ),
         })
     );
     const appointmentDetails = appointmentRows.map((appointment) => {
@@ -378,7 +405,14 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
         const service = firstRelation(appointment.services);
         const createdProfile = firstRelation(appointment.created_profile);
         const updatedProfile = firstRelation(appointment.updated_profile);
-        const measurement = measurementLabel(service?.measurement_type);
+        const clinicalRecord = firstRelation(
+            appointment.appointment_clinical_records
+        );
+        const clinicalRecordType = clinicalRecordTypeForService(
+            service?.name,
+            service?.measurement_type
+        );
+        const measurement = measurementLabel(clinicalRecordType);
         const locationName = patient?.location_id
             ? locationNameById.get(patient.location_id) ?? null
             : null;
@@ -400,10 +434,19 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             patientNameColor,
             scheduledDate: appointment.scheduled_date,
             serviceId: service?.id ?? null,
+            serviceMeasurementType: clinicalRecordType,
             serviceName: calendarServiceLabel(service?.name, "Serviço removido"),
             status: appointment.status,
             createdBy: profileLabel(createdProfile),
             updatedBy: profileLabel(updatedProfile),
+            clinicalRecord: clinicalRecord
+                ? {
+                      recordType: clinicalRecord.record_type,
+                      bloodPressureValue: clinicalRecord.blood_pressure_value,
+                      woundCharacteristics: clinicalRecord.wound_characteristics,
+                      woundTreatment: clinicalRecord.wound_treatment,
+                  }
+                : null,
         } satisfies AppointmentDetails;
     });
     const appointmentGroups = groupAppointmentsByPatient(appointmentDetails);

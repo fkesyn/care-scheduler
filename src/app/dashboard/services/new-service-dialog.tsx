@@ -145,6 +145,7 @@ export function NewServiceDialog() {
                             <option value="">Sem medição</option>
                             <option value="blood_pressure">Tensão arterial</option>
                             <option value="glucose">Glicémia</option>
+                            <option value="wound_care">Tratamento de feridas</option>
                         </select>
                     </div>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckSquareIcon, XIcon } from "lucide-react";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import {
@@ -10,6 +10,7 @@ import {
     updateAppointmentDetails,
     type UpdateAppointmentState,
 } from "@/app/dashboard/calendar/actions";
+import { clinicalRecordTypeForService } from "@/app/dashboard/calendar/service-display";
 import type {
     AppointmentEmployeeOption,
     AppointmentPatientOption,
@@ -37,6 +38,7 @@ export type AppointmentDetails = {
     employeeId: string | null;
     patientId: string | null;
     serviceId: string | null;
+    serviceMeasurementType: string | null;
     scheduledDate: string;
     status: string;
     notes: string | null;
@@ -48,6 +50,12 @@ export type AppointmentDetails = {
     employeeLabel: string | null;
     createdBy: string | null;
     updatedBy: string | null;
+    clinicalRecord: {
+        recordType: string;
+        bloodPressureValue: string | null;
+        woundCharacteristics: string | null;
+        woundTreatment: string | null;
+    } | null;
 };
 
 type AppointmentDetailsDialogProps = {
@@ -132,6 +140,8 @@ function serviceLabel(service: AppointmentServiceOption) {
             ? "TA"
             : service.measurementType === "glucose"
               ? "glicémia"
+              : service.measurementType === "wound_care"
+                ? "ferida"
               : null;
 
     return `${service.name}${suffix ? ` · ${suffix}` : ""}`;
@@ -189,6 +199,18 @@ export function AppointmentDetailsDialog({
     const hasCurrentService = appointment.serviceId
         ? services.some((service) => service.id === appointment.serviceId)
         : true;
+    const [selectedServiceId, setSelectedServiceId] = useState(
+        appointment.serviceId ?? ""
+    );
+    const selectedService = services.find(
+        (service) => service.id === selectedServiceId
+    );
+    const selectedMeasurementType = clinicalRecordTypeForService(
+        selectedService?.name ?? appointment.serviceName,
+        selectedService?.measurementType ?? appointment.serviceMeasurementType
+    );
+    const isBloodPressureService = selectedMeasurementType === "blood_pressure";
+    const isWoundCareService = selectedMeasurementType === "wound_care";
 
     const setOpen = (nextOpen: boolean) => {
         updateDialog.setOpen(nextOpen);
@@ -204,9 +226,13 @@ export function AppointmentDetailsDialog({
         appointment.employeeId ?? "",
         appointment.patientId ?? "",
         appointment.serviceId ?? "",
+        appointment.serviceMeasurementType ?? "",
         appointment.scheduledDate,
         appointment.status,
         appointment.notes ?? "",
+        appointment.clinicalRecord?.bloodPressureValue ?? "",
+        appointment.clinicalRecord?.woundCharacteristics ?? "",
+        appointment.clinicalRecord?.woundTreatment ?? "",
     ].join("-");
     const isGroupItem = triggerVariant === "groupItem";
 
@@ -272,6 +298,19 @@ export function AppointmentDetailsDialog({
 
                         {appointment.notes ? (
                             <p className="text-sm text-foreground">{appointment.notes}</p>
+                        ) : null}
+
+                        {appointment.clinicalRecord?.bloodPressureValue ? (
+                            <p className="text-sm text-foreground">
+                                TA: {appointment.clinicalRecord.bloodPressureValue}
+                            </p>
+                        ) : null}
+
+                        {appointment.clinicalRecord?.woundCharacteristics ||
+                        appointment.clinicalRecord?.woundTreatment ? (
+                            <p className="text-sm text-foreground">
+                                Registo de ferida guardado
+                            </p>
                         ) : null}
                     </div>
 
@@ -454,7 +493,10 @@ export function AppointmentDetailsDialog({
                                 <select
                                     id={`appointment-service-${appointment.id}`}
                                     name="service_id"
-                                    defaultValue={appointment.serviceId ?? ""}
+                                    value={selectedServiceId}
+                                    onChange={(event) =>
+                                        setSelectedServiceId(event.target.value)
+                                    }
                                     className={selectClassName(
                                         Boolean(visibleState.fieldErrors?.serviceId)
                                     )}
@@ -489,6 +531,127 @@ export function AppointmentDetailsDialog({
                                     </p>
                                 ) : null}
                             </div>
+
+                            {isBloodPressureService ? (
+                                <div className="grid gap-2 rounded-md border p-3">
+                                    <Label
+                                        htmlFor={`appointment-blood-pressure-${appointment.id}`}
+                                    >
+                                        Valor da tensão arterial
+                                    </Label>
+                                    <Input
+                                        id={`appointment-blood-pressure-${appointment.id}`}
+                                        name="blood_pressure_value"
+                                        defaultValue={
+                                            appointment.clinicalRecord
+                                                ?.bloodPressureValue ?? ""
+                                        }
+                                        placeholder="Ex.: 13/8 ou 130/80"
+                                        aria-describedby={
+                                            visibleState.fieldErrors
+                                                ?.bloodPressureValue
+                                                ? `appointment-blood-pressure-error-${appointment.id}`
+                                                : undefined
+                                        }
+                                        aria-invalid={Boolean(
+                                            visibleState.fieldErrors
+                                                ?.bloodPressureValue
+                                        )}
+                                    />
+                                    {visibleState.fieldErrors?.bloodPressureValue ? (
+                                        <p
+                                            id={`appointment-blood-pressure-error-${appointment.id}`}
+                                            className="text-sm text-destructive"
+                                        >
+                                            {
+                                                visibleState.fieldErrors
+                                                    .bloodPressureValue
+                                            }
+                                        </p>
+                                    ) : null}
+                                </div>
+                            ) : null}
+
+                            {isWoundCareService ? (
+                                <div className="grid gap-4 rounded-md border p-3">
+                                    <div className="grid gap-2">
+                                        <Label
+                                            htmlFor={`appointment-wound-characteristics-${appointment.id}`}
+                                        >
+                                            Características da ferida
+                                        </Label>
+                                        <Textarea
+                                            id={`appointment-wound-characteristics-${appointment.id}`}
+                                            name="wound_characteristics"
+                                            defaultValue={
+                                                appointment.clinicalRecord
+                                                    ?.woundCharacteristics ?? ""
+                                            }
+                                            placeholder="Ex.: localização, aspeto, exsudado, sinais de inflamação"
+                                            aria-describedby={
+                                                visibleState.fieldErrors
+                                                    ?.woundCharacteristics
+                                                    ? `appointment-wound-characteristics-error-${appointment.id}`
+                                                    : undefined
+                                            }
+                                            aria-invalid={Boolean(
+                                                visibleState.fieldErrors
+                                                    ?.woundCharacteristics
+                                            )}
+                                        />
+                                        {visibleState.fieldErrors
+                                            ?.woundCharacteristics ? (
+                                            <p
+                                                id={`appointment-wound-characteristics-error-${appointment.id}`}
+                                                className="text-sm text-destructive"
+                                            >
+                                                {
+                                                    visibleState.fieldErrors
+                                                        .woundCharacteristics
+                                                }
+                                            </p>
+                                        ) : null}
+                                    </div>
+
+                                    <div className="grid gap-2">
+                                        <Label
+                                            htmlFor={`appointment-wound-treatment-${appointment.id}`}
+                                        >
+                                            Tratamento realizado
+                                        </Label>
+                                        <Textarea
+                                            id={`appointment-wound-treatment-${appointment.id}`}
+                                            name="wound_treatment"
+                                            defaultValue={
+                                                appointment.clinicalRecord
+                                                    ?.woundTreatment ?? ""
+                                            }
+                                            placeholder="Ex.: limpeza, penso aplicado, material utilizado"
+                                            aria-describedby={
+                                                visibleState.fieldErrors
+                                                    ?.woundTreatment
+                                                    ? `appointment-wound-treatment-error-${appointment.id}`
+                                                    : undefined
+                                            }
+                                            aria-invalid={Boolean(
+                                                visibleState.fieldErrors
+                                                    ?.woundTreatment
+                                            )}
+                                        />
+                                        {visibleState.fieldErrors?.woundTreatment ? (
+                                            <p
+                                                id={`appointment-wound-treatment-error-${appointment.id}`}
+                                                className="text-sm text-destructive"
+                                            >
+                                                {
+                                                    visibleState.fieldErrors
+                                                        .woundTreatment
+                                                }
+                                            </p>
+                                        ) : null}
+                                    </div>
+                                </div>
+                            ) : null}
 
                             <div className="grid gap-2">
                                 <Label htmlFor={`appointment-date-${appointment.id}`}>

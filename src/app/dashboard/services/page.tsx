@@ -31,6 +31,10 @@ function measurementLabel(type: string | null) {
         return "Glicémia";
     }
 
+    if (type === "wound_care") {
+        return "Tratamento de feridas";
+    }
+
     return null;
 }
 

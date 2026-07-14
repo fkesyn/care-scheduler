@@ -91,6 +91,8 @@ function serviceLabel(service: ServiceOption) {
             ? "TA"
             : service.measurement_type === "glucose"
               ? "glicémia"
+              : service.measurement_type === "wound_care"
+                ? "ferida"
               : null;
 
     return `${service.name}${suffix ? ` · ${suffix}` : ""}`;

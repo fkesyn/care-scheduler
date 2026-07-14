@@ -12,6 +12,7 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { createClient } from "@/lib/supabase/server";
+import type { PatientClinicalRecord } from "./clinical-records-dialog";
 import type { FamilyContact } from "./family-contacts-dialog";
 import { NewPatientDialog } from "./new-patient-dialog";
 import { PatientRowActions } from "./patient-row-actions";
@@ -43,6 +44,35 @@ type Patient = {
     active: boolean | null;
     created_at: string | null;
 };
+
+type Relation<T> = T | T[] | null;
+
+type ClinicalRecordRow = {
+    id: string;
+    patient_id: string;
+    record_date: string;
+    record_type: string;
+    blood_pressure_value: string | null;
+    wound_characteristics: string | null;
+    wound_treatment: string | null;
+    services: Relation<{
+        name: string;
+    }>;
+    employees: Relation<{
+        name: string;
+    }>;
+    appointments: Relation<{
+        notes: string | null;
+    }>;
+};
+
+function firstRelation<T>(relation: Relation<T>) {
+    if (Array.isArray(relation)) {
+        return relation[0] ?? null;
+    }
+
+    return relation;
+}
 
 function formatDate(dateValue: string | null) {
     if (!dateValue) {
@@ -149,6 +179,33 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
                   .in("patient_id", patientIds)
                   .order("name")
             : { data: [], error: null };
+    const { data: clinicalRecords, error: clinicalRecordsError } =
+        patientIds.length > 0
+            ? await supabase
+                  .from("appointment_clinical_records")
+                  .select(
+                      `
+                      id,
+                      patient_id,
+                      record_date,
+                      record_type,
+                      blood_pressure_value,
+                      wound_characteristics,
+                      wound_treatment,
+                      services (
+                        name
+                      ),
+                      employees (
+                        name
+                      ),
+                      appointments (
+                        notes
+                      )
+                    `
+                  )
+                  .in("patient_id", patientIds)
+                  .order("record_date", { ascending: false })
+            : { data: [], error: null };
 
     if (familyContactsError) {
         return (
@@ -164,12 +221,49 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
         );
     }
 
+    if (clinicalRecordsError) {
+        return (
+            <div className="p-6">
+                <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
+                    <h1 className="text-2xl font-semibold tracking-tight">Utentes</h1>
+                    <p className="text-sm text-destructive">
+                        Erro ao carregar registos clínicos:{" "}
+                        {clinicalRecordsError.message}
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
     const familyContactsByPatientId = new Map<string, FamilyContact[]>();
 
     for (const contact of (familyContacts ?? []) as FamilyContact[]) {
         const current = familyContactsByPatientId.get(contact.patient_id) ?? [];
         current.push(contact);
         familyContactsByPatientId.set(contact.patient_id, current);
+    }
+
+    const clinicalRecordsByPatientId = new Map<string, PatientClinicalRecord[]>();
+
+    for (const record of (clinicalRecords ?? []) as ClinicalRecordRow[]) {
+        const service = firstRelation(record.services);
+        const employee = firstRelation(record.employees);
+        const appointment = firstRelation(record.appointments);
+        const current = clinicalRecordsByPatientId.get(record.patient_id) ?? [];
+
+        current.push({
+            id: record.id,
+            patient_id: record.patient_id,
+            record_date: record.record_date,
+            record_type: record.record_type,
+            blood_pressure_value: record.blood_pressure_value,
+            wound_characteristics: record.wound_characteristics,
+            wound_treatment: record.wound_treatment,
+            service_name: service?.name ?? null,
+            employee_name: employee?.name ?? null,
+            appointment_notes: appointment?.notes ?? null,
+        });
+        clinicalRecordsByPatientId.set(record.patient_id, current);
     }
 
     const locationNameById = new Map(
@@ -244,6 +338,9 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
                                 {patientRows.map((patient) => {
                                     const contacts =
                                         familyContactsByPatientId.get(patient.id) ?? [];
+                                    const clinicalPatientRecords =
+                                        clinicalRecordsByPatientId.get(patient.id) ??
+                                        [];
 
                                     return (
                                         <TableRow key={patient.id}>
@@ -273,6 +370,9 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
                                             <TableCell className="w-12 align-middle">
                                                 <PatientRowActions
                                                     familyContacts={contacts}
+                                                    clinicalRecords={
+                                                        clinicalPatientRecords
+                                                    }
                                                     patient={patient}
                                                     locations={locationRows}
                                                 />
