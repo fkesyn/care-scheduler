@@ -29,6 +29,7 @@ import {
     type ScheduleGridEntry,
     type ScheduleGridShiftType,
 } from "../schedule-grid";
+import { ScheduleWarningsActions } from "../schedule-warnings-actions";
 
 type ScheduleDetailPageProps = {
     params: Promise<{
@@ -99,6 +100,11 @@ type ScheduleGenerationWarning = {
         code: string;
         name: string;
     }>;
+};
+
+type ScheduleEmployeeFfDay = {
+    employee_id: string;
+    ff_days: number;
 };
 
 type PublicHoliday = {
@@ -225,6 +231,7 @@ export default async function ScheduleDetailPage({
         { data: entries, error: entriesError },
         { data: constraints, error: constraintsError },
         { data: generationWarnings, error: generationWarningsError },
+        { data: ffDays, error: ffDaysError },
         { data: holidaysData, error: holidaysError },
     ] = await Promise.all([
         supabase
@@ -307,6 +314,10 @@ export default async function ScheduleDetailPage({
             .order("work_date")
             .order("created_at"),
         supabase
+            .from("schedule_employee_ff_days")
+            .select("employee_id, ff_days")
+            .eq("schedule_id", schedule.id),
+        supabase
             .from("public_holidays")
             .select("holiday_date, name, country_code, region")
             .eq("country_code", "PT")
@@ -320,6 +331,7 @@ export default async function ScheduleDetailPage({
         entriesError ??
         constraintsError ??
         generationWarningsError ??
+        ffDaysError ??
         holidaysError;
 
     if (loadError) {
@@ -343,6 +355,10 @@ export default async function ScheduleDetailPage({
     const constraintRows = (constraints ?? []) as ScheduleConstraintRow[];
     const generationWarningRows =
         (generationWarnings ?? []) as ScheduleGenerationWarning[];
+    const ffDayRows = (ffDays ?? []) as ScheduleEmployeeFfDay[];
+    const ffDaysByEmployee = new Map(
+        ffDayRows.map((row) => [row.employee_id, row.ff_days])
+    );
     const holidayRowsFromDb = (holidaysData ?? []) as PublicHoliday[];
     const fallbackHolidayRows = buildStaticPortugueseHolidays(
         Number(schedule.month.slice(0, 4))
@@ -361,6 +377,7 @@ export default async function ScheduleDetailPage({
         ),
     ];
     const gridEmployees: ScheduleGridEmployee[] = employeeRows.map((employee) => ({
+        ffDays: ffDaysByEmployee.get(employee.id) ?? 0,
         id: employee.id,
         name: employee.name,
         role: employee.role,
@@ -420,8 +437,8 @@ export default async function ScheduleDetailPage({
     const location = firstRelation(schedule.locations);
 
     return (
-        <div className="p-6">
-            <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+        <div className="px-3 py-4 sm:px-4 lg:px-6">
+            <div className="mx-auto flex w-full max-w-[calc(100vw-1.5rem)] flex-col gap-6 sm:max-w-[calc(100vw-2rem)] lg:max-w-[calc(100vw-3rem)]">
                 <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                     <div className="flex flex-col gap-2">
                         <h1 className="text-2xl font-semibold tracking-tight capitalize">
@@ -478,6 +495,12 @@ export default async function ScheduleDetailPage({
                         )}
                     </div>
                 </section>
+
+                <ScheduleWarningsActions
+                    canManage={canManage}
+                    scheduleId={schedule.id}
+                    warningsCount={generationWarningRows.length}
+                />
 
                 <GenerationWarningsSection
                     canManage={canManage}

@@ -1,12 +1,13 @@
 "use client";
 
-import { AlertTriangleIcon, GripVerticalIcon } from "lucide-react";
+import { AlertTriangleIcon, GripVerticalIcon, SaveIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
 import {
     clearScheduleEntry,
     reorderScheduleEmployees,
+    updateScheduleEmployeeFfDays,
     upsertScheduleEntry,
 } from "@/app/dashboard/schedules/actions";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +24,7 @@ export type ScheduleGridDay = {
 };
 
 export type ScheduleGridEmployee = {
+    ffDays: number;
     id: string;
     name: string;
     role: string;
@@ -73,24 +75,13 @@ type CellEvaluation = {
 
 const dayOffCodes = new Set(["F", "FF", "Fe"]);
 
-function roleLabel(role: string) {
-    if (role === "nurse") {
-        return "Enfermeiro/a";
-    }
-
-    if (role === "caregiver") {
-        return "Cuidador/a";
-    }
-
-    if (role === "other") {
-        return "Outro";
-    }
-
-    return "Auxiliar / Funcionário";
-}
-
 function buildCellKey(employeeId: string, dateValue: string) {
     return `${employeeId}:${dateValue}`;
+}
+
+function compactEmployeeName(name: string) {
+    const normalizedName = name.replace(/^enf\.?\s*/i, "").trim();
+    return normalizedName.split(/\s+/)[0] ?? normalizedName;
 }
 
 function constraintTypeLabel(constraintType: string) {
@@ -278,6 +269,14 @@ export function ScheduleGrid({
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [savingCellKey, setSavingCellKey] = useState<string | null>(null);
     const [localValues, setLocalValues] = useState<Record<string, string>>({});
+    const [ffDayValues, setFfDayValues] = useState<Record<string, string>>(() =>
+        Object.fromEntries(
+            employees.map((employee) => [employee.id, String(employee.ffDays ?? 0)])
+        )
+    );
+    const [savingFfEmployeeId, setSavingFfEmployeeId] = useState<string | null>(
+        null
+    );
     const [employeeOrder, setEmployeeOrder] = useState<string[]>(() =>
         employees.map((employee) => employee.id)
     );
@@ -334,7 +333,8 @@ export function ScheduleGrid({
         return sortedEmployees;
     }, [employeeOrder, employeesById, employees]);
 
-    const gridTemplateColumns = `minmax(13rem, 1.4fr) repeat(${days.length}, minmax(3.25rem, 1fr))`;
+    const gridTemplateColumns = `minmax(7rem, 8.5rem) repeat(${days.length}, minmax(1.55rem, 1fr))`;
+    const gridMinimumWidthRem = 7 + days.length * 1.55;
 
     function mutateCell(
         cellKey: string,
@@ -434,6 +434,52 @@ export function ScheduleGrid({
         });
     }
 
+    function saveEmployeeFfDays(employeeId: string) {
+        if (!canManage) {
+            return;
+        }
+
+        const employee = employeesById.get(employeeId);
+        const rawValue = ffDayValues[employeeId] ?? "0";
+        const normalizedValue = rawValue.trim() === "" ? "0" : rawValue;
+        const nextValue = Number(normalizedValue);
+
+        if (!Number.isInteger(nextValue) || nextValue < 0 || nextValue > 31) {
+            setErrorMessage("O valor de FF tem de ser um número entre 0 e 31.");
+            return;
+        }
+
+        setSavingFfEmployeeId(employeeId);
+        setErrorMessage(null);
+
+        startTransition(() => {
+            void (async () => {
+                const result = await updateScheduleEmployeeFfDays({
+                    employeeId,
+                    ffDays: nextValue,
+                    scheduleId,
+                });
+
+                if (result.status === "error") {
+                    setErrorMessage(
+                        result.message ??
+                            `Não consegui guardar FF de ${
+                                employee?.name ?? "este funcionário"
+                            }.`
+                    );
+                } else {
+                    setFfDayValues((current) => ({
+                        ...current,
+                        [employeeId]: String(nextValue),
+                    }));
+                    router.refresh();
+                }
+
+                setSavingFfEmployeeId(null);
+            })();
+        });
+    }
+
     return (
         <section className="overflow-hidden rounded-lg border bg-card shadow-xs">
             <div className="flex flex-col gap-1 border-b p-4">
@@ -459,19 +505,24 @@ export function ScheduleGrid({
                 </div>
             ) : (
                 <div className="overflow-x-auto">
-                    <div className="min-w-max">
+                    <div
+                        className="w-full"
+                        style={{
+                            minWidth: `${gridMinimumWidthRem}rem`,
+                        }}
+                    >
                         <div
-                            className="grid border-b bg-muted/50 text-xs font-medium text-muted-foreground"
+                            className="grid border-b bg-muted/50 text-[11px] font-medium text-muted-foreground"
                             style={{ gridTemplateColumns }}
                         >
-                            <div className="sticky left-0 z-20 border-r bg-muted/50 p-3">
+                            <div className="sticky left-0 z-20 border-r bg-muted/50 p-2">
                                 Pessoa
                             </div>
                             {days.map((day) => (
                                 <div
                                     key={day.dateValue}
                                     className={cn(
-                                        "border-r p-2 text-center last:border-r-0",
+                                        "min-w-0 border-r px-0.5 py-1 text-center leading-tight last:border-r-0",
                                         day.isWeekend &&
                                             "bg-slate-300/70 dark:bg-slate-700/60",
                                         day.isHoliday &&
@@ -482,7 +533,9 @@ export function ScheduleGrid({
                                     <div className="font-semibold text-foreground">
                                         {day.day}
                                     </div>
-                                    <div className="capitalize">{day.weekday}</div>
+                                    <div className="truncate capitalize text-[10px]">
+                                        {day.weekday}
+                                    </div>
                                     {day.holidayName ? (
                                         <div className="truncate text-[10px] font-medium normal-case">
                                             {day.holidayName}
@@ -535,7 +588,7 @@ export function ScheduleGrid({
                                         }
                                     }}
                                 >
-                                    <div className="sticky left-0 z-10 border-r bg-card p-3">
+                                    <div className="sticky left-0 z-10 border-r bg-card p-2">
                                         <div className="flex min-w-0 items-start gap-2">
                                             {canManage ? (
                                                 <button
@@ -560,13 +613,76 @@ export function ScheduleGrid({
                                                     />
                                                 </button>
                                             ) : null}
-                                            <div className="flex min-w-0 flex-col gap-1">
-                                                <span className="truncate text-sm font-medium">
-                                                    {employee.name}
+                                            <div className="flex min-w-0 flex-1 flex-col gap-1">
+                                                <span
+                                                    className="truncate text-xs font-medium"
+                                                    title={employee.name}
+                                                >
+                                                    {compactEmployeeName(employee.name)}
                                                 </span>
-                                                <span className="truncate text-xs text-muted-foreground">
-                                                    {roleLabel(employee.role)}
-                                                </span>
+                                                <div className="flex items-center gap-1">
+                                                    <span className="rounded-sm border bg-muted px-1 py-0.5 font-mono text-[9px] font-semibold leading-none text-muted-foreground">
+                                                        FF
+                                                    </span>
+                                                    <input
+                                                        aria-label={`FF de ${employee.name}`}
+                                                        className="h-5 w-8 rounded-sm border border-input bg-background px-1 text-center text-[10px] font-medium outline-none [appearance:textfield] focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-70 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                                        disabled={
+                                                            !canManage ||
+                                                            savingFfEmployeeId === employee.id
+                                                        }
+                                                        inputMode="numeric"
+                                                        min={0}
+                                                        max={31}
+                                                        step={1}
+                                                        type="number"
+                                                        value={
+                                                            ffDayValues[employee.id] ??
+                                                            String(employee.ffDays ?? 0)
+                                                        }
+                                                        onChange={(event) => {
+                                                            setFfDayValues((current) => ({
+                                                                ...current,
+                                                                [employee.id]:
+                                                                    event.target.value,
+                                                            }));
+                                                        }}
+                                                        onKeyDown={(event) => {
+                                                            if (event.key === "Enter") {
+                                                                event.preventDefault();
+                                                                saveEmployeeFfDays(
+                                                                    employee.id
+                                                                );
+                                                            }
+                                                        }}
+                                                    />
+                                                    {canManage ? (
+                                                        <button
+                                                            type="button"
+                                                            aria-label={`Guardar FF de ${employee.name}`}
+                                                            className="inline-flex size-5 items-center justify-center rounded-sm border bg-background text-muted-foreground shadow-xs hover:bg-muted disabled:cursor-wait disabled:opacity-60"
+                                                            disabled={
+                                                                savingFfEmployeeId ===
+                                                                employee.id
+                                                            }
+                                                            onClick={() =>
+                                                                saveEmployeeFfDays(
+                                                                    employee.id
+                                                                )
+                                                            }
+                                                        >
+                                                            {savingFfEmployeeId ===
+                                                            employee.id ? (
+                                                                <Spinner className="size-3" />
+                                                            ) : (
+                                                                <SaveIcon
+                                                                    className="size-3"
+                                                                    aria-hidden="true"
+                                                                />
+                                                            )}
+                                                        </button>
+                                                    ) : null}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -598,7 +714,7 @@ export function ScheduleGrid({
                                             <div
                                                 key={day.dateValue}
                                                 className={cn(
-                                                    "relative flex min-h-14 items-center justify-center border-r p-1.5 text-center last:border-r-0",
+                                                    "relative flex min-h-9 min-w-0 items-center justify-center border-r p-0.5 text-center last:border-r-0",
                                                     day.isWeekend &&
                                                         "bg-slate-200/70 dark:bg-slate-800/45",
                                                     day.isHoliday &&
@@ -625,7 +741,7 @@ export function ScheduleGrid({
                                                 <select
                                                     aria-label={`${employee.name}, ${day.dateValue}`}
                                                     className={cn(
-                                                        "h-9 w-full rounded-md border border-input bg-background px-1 text-center font-mono text-xs font-semibold shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-wait disabled:opacity-70",
+                                                        "h-6 min-w-0 w-full appearance-none rounded-sm border border-input bg-background px-0 text-center font-mono text-[10px] font-semibold shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-wait disabled:opacity-70",
                                                         evaluation.hasConflict &&
                                                             "border-amber-400 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/40"
                                                     )}

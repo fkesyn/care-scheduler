@@ -79,6 +79,18 @@ export type UpdateGenerationWarningState = {
     message?: string;
 };
 
+export type ValidateScheduleWarningsState = {
+    status: "idle" | "success" | "error";
+    message?: string;
+    warningsCount?: number;
+};
+
+export type ClearScheduleWarningsState = {
+    status: "idle" | "success" | "error";
+    message?: string;
+    clearedCount?: number;
+};
+
 export type ImportScheduleConstraintsState = {
     status: "idle" | "success" | "error";
     message?: string;
@@ -121,6 +133,12 @@ export type ReorderScheduleEmployeesInput = {
     employeeIds: string[];
 };
 
+export type UpdateScheduleEmployeeFfDaysInput = {
+    scheduleId: string;
+    employeeId: string;
+    ffDays: number | string;
+};
+
 const monthPattern = /^\d{4}-\d{2}$/;
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const uuidPattern =
@@ -149,6 +167,7 @@ const workPreferenceTypes = new Set([
     "unavailable_weekday",
     "max_shifts_per_week",
 ]);
+const nonWorkShiftCodes = new Set(["F", "FF", "Fe"]);
 
 type ConstraintScheduleContext = {
     id: string;
@@ -204,6 +223,10 @@ type GenerationWarning = {
     employee_id: string | null;
     message: string;
     resolved: boolean;
+};
+
+type ExistingScheduleWarning = GenerationWarning & {
+    id: string;
 };
 
 type ImportConstraintSuggestion = {
@@ -683,6 +706,600 @@ function hasFixedPreferredShift(
     );
 }
 
+function liveWarningKey(warning: GenerationWarning) {
+    return [
+        warning.work_date,
+        warning.shift_type_id ?? "",
+        warning.employee_id ?? "",
+        warning.message,
+    ].join("|");
+}
+
+function isWorkShift(shiftType: GenerationShiftType | undefined) {
+    return Boolean(shiftType && !nonWorkShiftCodes.has(shiftType.code));
+}
+
+function shiftWorkUnitsForLiveWarnings(shiftType: GenerationShiftType | undefined) {
+    if (!shiftType || nonWorkShiftCodes.has(shiftType.code)) {
+        return 0;
+    }
+
+    return shiftType.code === "MT" ? 2 : 1;
+}
+
+async function rebuildScheduleWarningsForCurrentGrid(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    schedule: ConstraintScheduleContext
+) {
+    const monthDays = buildScheduleMonthDays(schedule.month);
+    const monthStart = monthDays[0] ?? schedule.month;
+    const monthEnd = monthDays[monthDays.length - 1] ?? schedule.month;
+
+    const [
+        { data: employeesData, error: employeesError },
+        { data: shiftTypesData, error: shiftTypesError },
+        { data: constraintsData, error: constraintsError },
+        { data: workPreferencesData, error: workPreferencesError },
+        { data: entriesData, error: entriesError },
+        { data: existingWarningsData, error: existingWarningsError },
+        { data: holidaysData, error: holidaysError },
+    ] = await Promise.all([
+        supabase
+            .from("employees")
+            .select("id, name")
+            .eq("organization_id", schedule.organization_id)
+            .eq("active", true)
+            .order("name"),
+        supabase
+            .from("shift_types")
+            .select("id, code, name")
+            .eq("organization_id", schedule.organization_id)
+            .order("display_order")
+            .order("code"),
+        supabase
+            .from("employee_schedule_constraints")
+            .select(
+                "id, employee_id, constraint_type, shift_type_id, specific_date, start_date, end_date, notes, source_text"
+            )
+            .eq("organization_id", schedule.organization_id)
+            .eq("month", schedule.month),
+        supabase
+            .from("employee_work_preferences")
+            .select(
+                "id, employee_id, preference_type, shift_type_id, weekday, active, notes"
+            )
+            .eq("organization_id", schedule.organization_id)
+            .eq("active", true),
+        supabase
+            .from("schedule_entries")
+            .select("schedule_id, employee_id, work_date, shift_type_id, notes")
+            .eq("schedule_id", schedule.id)
+            .gte("work_date", monthStart)
+            .lte("work_date", monthEnd),
+        supabase
+            .from("schedule_generation_warnings")
+            .select(
+                "id, schedule_id, work_date, shift_type_id, employee_id, message, resolved"
+            )
+            .eq("schedule_id", schedule.id),
+        supabase
+            .from("public_holidays")
+            .select("holiday_date, name, country_code, region")
+            .eq("country_code", "PT")
+            .gte("holiday_date", monthStart)
+            .lte("holiday_date", monthEnd),
+    ]);
+
+    const loadError =
+        employeesError ??
+        shiftTypesError ??
+        constraintsError ??
+        workPreferencesError ??
+        entriesError ??
+        existingWarningsError ??
+        holidaysError;
+
+    if (loadError) {
+        return {
+            count: 0,
+            error: `Não consegui rever os avisos: ${loadError.message}`,
+        };
+    }
+
+    const employees = (employeesData ?? []) as GenerationEmployee[];
+    const shiftTypes = (shiftTypesData ?? []) as GenerationShiftType[];
+    const constraints = (constraintsData ?? []) as GenerationConstraint[];
+    const workPreferences =
+        (workPreferencesData ?? []) as GenerationWorkPreference[];
+    const entries = (entriesData ?? []) as GenerationEntry[];
+    const existingWarnings =
+        (existingWarningsData ?? []) as ExistingScheduleWarning[];
+    const holidaysFromDb = (holidaysData ?? []) as Array<{
+        holiday_date: string;
+        name: string;
+        country_code: string;
+        region: string | null;
+    }>;
+    const fallbackHolidays = buildStaticPortugueseHolidays(
+        Number(schedule.month.slice(0, 4))
+    ).filter(
+        (holiday) =>
+            holiday.holiday_date >= monthStart && holiday.holiday_date <= monthEnd
+    );
+    const holidays = [
+        ...holidaysFromDb,
+        ...fallbackHolidays.filter(
+            (fallbackHoliday) =>
+                !holidaysFromDb.some(
+                    (dbHoliday) =>
+                        dbHoliday.holiday_date === fallbackHoliday.holiday_date &&
+                        (dbHoliday.region ?? null) === (fallbackHoliday.region ?? null)
+                )
+        ),
+    ];
+    const employeeById = new Map(
+        employees.map((employee) => [employee.id, employee])
+    );
+    const shiftTypesById = new Map(
+        shiftTypes.map((shiftType) => [shiftType.id, shiftType])
+    );
+    const shiftTypesByCode = new Map(
+        shiftTypes.map((shiftType) => [shiftType.code, shiftType])
+    );
+    const entriesByCell = new Map(
+        entries.map((entry) => [
+            buildEntryKey(entry.employee_id, entry.work_date),
+            entry,
+        ])
+    );
+    const entriesByDate = new Map<string, GenerationEntry[]>();
+    const existingResolvedByKey = new Map(
+        existingWarnings.map((warning) => [
+            liveWarningKey(warning),
+            Boolean(warning.resolved),
+        ])
+    );
+    const warnings: GenerationWarning[] = [];
+    const warningKeys = new Set<string>();
+    const maxShiftsPerWeekByEmployee = new Map<string, number>();
+
+    for (const entry of entries) {
+        const current = entriesByDate.get(entry.work_date) ?? [];
+        current.push(entry);
+        entriesByDate.set(entry.work_date, current);
+    }
+
+    function addWarning(
+        workDate: string,
+        shiftTypeId: string | null,
+        message: string,
+        employeeId: string | null = null
+    ) {
+        const holiday = getHolidayForDateFromList(holidays, workDate);
+        const holidaySuffix = holiday ? ` (Feriado: ${holiday.name})` : "";
+        const warning: GenerationWarning = {
+            employee_id: employeeId,
+            message: `${message}${holidaySuffix}`,
+            resolved: false,
+            schedule_id: schedule.id,
+            shift_type_id: shiftTypeId,
+            work_date: workDate,
+        };
+        const key = liveWarningKey(warning);
+
+        if (warningKeys.has(key)) {
+            return;
+        }
+
+        warning.resolved = existingResolvedByKey.get(key) ?? false;
+        warningKeys.add(key);
+        warnings.push(warning);
+    }
+
+    const preferenceConstraints: GenerationConstraint[] = [];
+
+    for (const preference of workPreferences) {
+        const employee = employeeById.get(preference.employee_id);
+
+        if (!employee || !workPreferenceTypes.has(preference.preference_type)) {
+            continue;
+        }
+
+        if (preference.preference_type === "max_shifts_per_week") {
+            const maxValue = extractMaxShiftsPerWeek(preference.notes);
+
+            if (!maxValue) {
+                addWarning(
+                    schedule.month,
+                    null,
+                    `${employee.name}: preferência fixa de máximo de turnos/semana sem número válido nas notas.`,
+                    employee.id
+                );
+                continue;
+            }
+
+            maxShiftsPerWeekByEmployee.set(employee.id, maxValue);
+            continue;
+        }
+
+        if (
+            (preference.preference_type === "preferred_shift" ||
+                preference.preference_type === "avoid_shift" ||
+                preference.preference_type === "only_shift") &&
+            !preference.shift_type_id
+        ) {
+            addWarning(
+                schedule.month,
+                null,
+                `${employee.name}: preferência fixa "${preference.preference_type}" sem turno associado.`,
+                employee.id
+            );
+            continue;
+        }
+
+        if (
+            preference.shift_type_id &&
+            !shiftTypesById.has(preference.shift_type_id)
+        ) {
+            addWarning(
+                schedule.month,
+                null,
+                `${employee.name}: preferência fixa com turno inválido/inativo.`,
+                employee.id
+            );
+            continue;
+        }
+
+        const mappedConstraintType =
+            preference.preference_type === "unavailable_weekday"
+                ? "unavailable_shift"
+                : preference.preference_type;
+        const scopeDates =
+            preference.weekday === null
+                ? [null]
+                : monthDays.filter(
+                      (dateValue) => weekdayFromDate(dateValue) === preference.weekday
+                  );
+
+        for (const scopedDate of scopeDates) {
+            preferenceConstraints.push({
+                constraint_type: mappedConstraintType,
+                employee_id: employee.id,
+                end_date: null,
+                id: `pref-${preference.id}-${scopedDate ?? "all"}`,
+                notes: preference.notes,
+                shift_type_id: preference.shift_type_id,
+                source_text: "Preferência fixa",
+                specific_date: scopedDate,
+                start_date: null,
+            });
+        }
+    }
+
+    const orderedConstraints = [...preferenceConstraints, ...constraints];
+    const morningShift = shiftTypesByCode.get("M");
+    const afternoonShift = shiftTypesByCode.get("T");
+    const weekendCombinedShift = shiftTypesByCode.get("MT");
+
+    for (const dateValue of monthDays) {
+        const dateEntries = entriesByDate.get(dateValue) ?? [];
+        const assignedCodes = new Set(
+            dateEntries
+                .map((entry) => shiftTypesById.get(entry.shift_type_id)?.code)
+                .filter((code): code is string => Boolean(code))
+        );
+        const hasMorning = assignedCodes.has("M") || assignedCodes.has("MT");
+        const hasAfternoon = assignedCodes.has("T") || assignedCodes.has("MT");
+        const isWeekend = [0, 6].includes(weekdayFromDate(dateValue));
+
+        if (isWeekend && weekendCombinedShift) {
+            if (!assignedCodes.has("MT") && !(hasMorning && hasAfternoon)) {
+                addWarning(
+                    dateValue,
+                    weekendCombinedShift.id,
+                    "Fim de semana sem cobertura completa."
+                );
+            }
+
+            continue;
+        }
+
+        if (morningShift && !hasMorning) {
+            addWarning(dateValue, morningShift.id, "Dia sem cobertura de manhã.");
+        }
+
+        if (afternoonShift && !hasAfternoon) {
+            addWarning(dateValue, afternoonShift.id, "Dia sem cobertura de tarde.");
+        }
+    }
+
+    for (const constraint of orderedConstraints) {
+        const employee = employeeById.get(constraint.employee_id);
+
+        if (!employee) {
+            continue;
+        }
+
+        const scopedDates = constraintHasDateScope(constraint)
+            ? scopedConstraintDates(constraint, monthDays)
+            : monthDays;
+
+        if (constraint.constraint_type === "vacation") {
+            for (const dateValue of scopedDates) {
+                const entry = entriesByCell.get(buildEntryKey(employee.id, dateValue));
+                const shift = entry
+                    ? shiftTypesById.get(entry.shift_type_id)
+                    : undefined;
+
+                if (!entry) {
+                    addWarning(
+                        dateValue,
+                        shiftTypesByCode.get("Fe")?.id ?? null,
+                        `${employee.name}: férias sem Fe/F marcado.`,
+                        employee.id
+                    );
+                    continue;
+                }
+
+                if (shift && shift.code !== "Fe" && shift.code !== "F") {
+                    addWarning(
+                        dateValue,
+                        entry.shift_type_id,
+                        `${employee.name}: férias violadas com ${shiftLabel(shift)}.`,
+                        employee.id
+                    );
+                }
+            }
+
+            continue;
+        }
+
+        if (constraint.constraint_type === "preferred_day_off") {
+            for (const dateValue of scopedDates) {
+                const entry = entriesByCell.get(buildEntryKey(employee.id, dateValue));
+                const shift = entry
+                    ? shiftTypesById.get(entry.shift_type_id)
+                    : undefined;
+
+                if (!entry) {
+                    addWarning(
+                        dateValue,
+                        shiftTypesByCode.get("F")?.id ?? null,
+                        `${employee.name}: folga pedida ainda não está marcada.`,
+                        employee.id
+                    );
+                    continue;
+                }
+
+                if (isWorkShift(shift)) {
+                    addWarning(
+                        dateValue,
+                        entry.shift_type_id,
+                        `${employee.name}: folga pedida violada com ${shiftLabel(
+                            shift
+                        )}.`,
+                        employee.id
+                    );
+                }
+            }
+
+            continue;
+        }
+
+        if (
+            constraint.constraint_type === "unavailable_shift" ||
+            constraint.constraint_type === "avoid_shift"
+        ) {
+            for (const dateValue of scopedDates) {
+                const entry = entriesByCell.get(buildEntryKey(employee.id, dateValue));
+                const shift = entry
+                    ? shiftTypesById.get(entry.shift_type_id)
+                    : undefined;
+
+                if (
+                    !entry ||
+                    (!constraint.shift_type_id && !isWorkShift(shift)) ||
+                    (constraint.shift_type_id &&
+                        entry.shift_type_id !== constraint.shift_type_id)
+                ) {
+                    continue;
+                }
+
+                const messagePrefix =
+                    constraint.constraint_type === "unavailable_shift"
+                        ? "não pode fazer"
+                        : "preferiu evitar";
+
+                addWarning(
+                    dateValue,
+                    entry.shift_type_id,
+                    `${employee.name}: ${messagePrefix} ${shiftLabel(shift)}.`,
+                    employee.id
+                );
+            }
+
+            continue;
+        }
+
+        if (constraint.constraint_type === "only_shift") {
+            for (const dateValue of scopedDates) {
+                const entry = entriesByCell.get(buildEntryKey(employee.id, dateValue));
+                const shift = entry
+                    ? shiftTypesById.get(entry.shift_type_id)
+                    : undefined;
+
+                if (
+                    !entry ||
+                    !shift ||
+                    !isWorkShift(shift) ||
+                    !constraint.shift_type_id ||
+                    entry.shift_type_id === constraint.shift_type_id
+                ) {
+                    continue;
+                }
+
+                addWarning(
+                    dateValue,
+                    entry.shift_type_id,
+                    `${employee.name}: só deveria fazer ${shiftLabel(
+                        shiftTypesById.get(constraint.shift_type_id)
+                    )}, mas está com ${shiftLabel(shift)}.`,
+                    employee.id
+                );
+            }
+
+            continue;
+        }
+
+        if (
+            constraint.constraint_type === "preferred_shift" &&
+            constraint.shift_type_id
+        ) {
+            const preferredShift = shiftTypesById.get(constraint.shift_type_id);
+
+            if (!preferredShift) {
+                continue;
+            }
+
+            if (constraintHasDateScope(constraint)) {
+                for (const dateValue of scopedDates) {
+                    const entry = entriesByCell.get(
+                        buildEntryKey(employee.id, dateValue)
+                    );
+
+                    if (entry?.shift_type_id === constraint.shift_type_id) {
+                        continue;
+                    }
+
+                    addWarning(
+                        dateValue,
+                        constraint.shift_type_id,
+                        `${employee.name}: preferência por ${shiftLabel(
+                            preferredShift
+                        )} não está cumprida.`,
+                        employee.id
+                    );
+                }
+
+                continue;
+            }
+
+            const hasPreferredShiftInMonth = monthDays.some((dateValue) => {
+                const entry = entriesByCell.get(buildEntryKey(employee.id, dateValue));
+                return entry?.shift_type_id === constraint.shift_type_id;
+            });
+
+            if (!hasPreferredShiftInMonth) {
+                addWarning(
+                    schedule.month,
+                    constraint.shift_type_id,
+                    `${employee.name}: preferência por ${shiftLabel(
+                        preferredShift
+                    )} ainda não aparece no mês.`,
+                    employee.id
+                );
+            }
+        }
+    }
+
+    const weeklyWorkCounts = new Map<string, number>();
+    const workCounts = new Map(employees.map((employee) => [employee.id, 0]));
+    const weekendWorkCounts = new Map(employees.map((employee) => [employee.id, 0]));
+
+    for (const entry of entries) {
+        const shift = shiftTypesById.get(entry.shift_type_id);
+        const units = shiftWorkUnitsForLiveWarnings(shift);
+
+        if (units === 0 || !employeeById.has(entry.employee_id)) {
+            continue;
+        }
+
+        const weekKey = `${entry.employee_id}:${weekStartKeyFromDate(entry.work_date)}`;
+        weeklyWorkCounts.set(weekKey, (weeklyWorkCounts.get(weekKey) ?? 0) + units);
+        workCounts.set(entry.employee_id, (workCounts.get(entry.employee_id) ?? 0) + units);
+
+        if ([0, 6].includes(weekdayFromDate(entry.work_date))) {
+            weekendWorkCounts.set(
+                entry.employee_id,
+                (weekendWorkCounts.get(entry.employee_id) ?? 0) + 1
+            );
+        }
+    }
+
+    for (const [employeeId, maxShiftsPerWeek] of maxShiftsPerWeekByEmployee) {
+        const employee = employeeById.get(employeeId);
+
+        if (!employee) {
+            continue;
+        }
+
+        for (const [weekKey, count] of weeklyWorkCounts) {
+            if (!weekKey.startsWith(`${employeeId}:`) || count <= maxShiftsPerWeek) {
+                continue;
+            }
+
+            addWarning(
+                weekKey.split(":")[1] ?? schedule.month,
+                null,
+                `${employee.name}: ultrapassa o máximo de ${maxShiftsPerWeek} turnos nesta semana (${count}).`,
+                employee.id
+            );
+        }
+    }
+
+    const workTotals = Array.from(workCounts.values());
+    const weekendTotals = Array.from(weekendWorkCounts.values());
+
+    if (workTotals.length > 1 && Math.max(...workTotals) - Math.min(...workTotals) >= 8) {
+        addWarning(
+            schedule.month,
+            null,
+            "Distribuição de turnos desequilibrada entre funcionários."
+        );
+    }
+
+    if (
+        weekendTotals.length > 1 &&
+        Math.max(...weekendTotals) - Math.min(...weekendTotals) >= 3
+    ) {
+        addWarning(
+            schedule.month,
+            null,
+            "Distribuição de fins de semana está desequilibrada."
+        );
+    }
+
+    const { error: deleteWarningsError } = await supabase
+        .from("schedule_generation_warnings")
+        .delete()
+        .eq("schedule_id", schedule.id);
+
+    if (deleteWarningsError) {
+        return {
+            count: warnings.length,
+            error: `Não consegui limpar avisos anteriores: ${deleteWarningsError.message}`,
+        };
+    }
+
+    if (warnings.length > 0) {
+        const { error: insertWarningsError } = await supabase
+            .from("schedule_generation_warnings")
+            .insert(warnings);
+
+        if (insertWarningsError) {
+            return {
+                count: warnings.length,
+                error: `Não consegui guardar avisos atualizados: ${insertWarningsError.message}`,
+            };
+        }
+    }
+
+    return {
+        count: warnings.length,
+        error: null,
+    };
+}
+
 export async function createMonthlySchedule(
     _previousState: ScheduleFormState,
     formData: FormData
@@ -1024,6 +1641,7 @@ export async function createScheduleConstraint(
     }
 
     revalidatePath(`/dashboard/schedules/${schedule.id}`);
+    revalidatePath(`/dashboard/schedules/${schedule.id}/print`);
 
     return {
         status: "success",
@@ -1154,6 +1772,7 @@ export async function updateScheduleConstraint(
     }
 
     revalidatePath(`/dashboard/schedules/${schedule.id}`);
+    revalidatePath(`/dashboard/schedules/${schedule.id}/print`);
 
     return {
         status: "success",
@@ -2013,6 +2632,89 @@ export async function reorderScheduleEmployees(
     return {
         status: "success",
         message: "Ordem atualizada.",
+    };
+}
+
+export async function updateScheduleEmployeeFfDays(
+    input: UpdateScheduleEmployeeFfDaysInput
+): Promise<ScheduleEntryActionState> {
+    const scheduleId = String(input.scheduleId ?? "").trim();
+    const employeeId = String(input.employeeId ?? "").trim();
+    const ffDays = Number(input.ffDays);
+
+    if (!uuidPattern.test(scheduleId) || !uuidPattern.test(employeeId)) {
+        return {
+            status: "error",
+            message: "Horário ou funcionário inválido.",
+        };
+    }
+
+    if (!Number.isInteger(ffDays) || ffDays < 0 || ffDays > 31) {
+        return {
+            status: "error",
+            message: "O valor de FF tem de ser um número entre 0 e 31.",
+        };
+    }
+
+    const context = await getAuthenticatedContext();
+
+    if (context.error) {
+        return {
+            status: "error",
+            message: context.error,
+        };
+    }
+
+    const schedule = await getConstraintScheduleContext(context.supabase, scheduleId);
+
+    if (!schedule || schedule.organization_id !== context.organizationId) {
+        return {
+            status: "error",
+            message: "Horário inválido.",
+        };
+    }
+
+    const employeeIsValid = await validateEmployeeForConstraint(
+        context.supabase,
+        employeeId,
+        schedule.organization_id
+    );
+
+    if (!employeeIsValid) {
+        return {
+            status: "error",
+            message: "Funcionário inválido para este horário.",
+        };
+    }
+
+    const { error } = await context.supabase
+        .from("schedule_employee_ff_days")
+        .upsert(
+            {
+                employee_id: employeeId,
+                ff_days: ffDays,
+                schedule_id: schedule.id,
+            },
+            {
+                onConflict: "schedule_id,employee_id",
+            }
+        )
+        .select("id")
+        .single();
+
+    if (error) {
+        return {
+            status: "error",
+            message: `Não consegui guardar os FF: ${error.message}`,
+        };
+    }
+
+    revalidatePath(`/dashboard/schedules/${schedule.id}`);
+    revalidatePath(`/dashboard/schedules/${schedule.id}/print`);
+
+    return {
+        status: "success",
+        message: "FF guardado.",
     };
 }
 
@@ -4929,18 +5631,6 @@ export async function generateMonthlySchedule(
         };
     }
 
-    const { error: deleteWarningsError } = await context.supabase
-        .from("schedule_generation_warnings")
-        .delete()
-        .eq("schedule_id", generationSchedule.id);
-
-    if (deleteWarningsError) {
-        return {
-            status: "error",
-            message: `Não consegui limpar avisos anteriores: ${deleteWarningsError.message}`,
-        };
-    }
-
     if (entries.length > 0) {
         const { error: insertEntriesError } = await context.supabase
             .from("schedule_entries")
@@ -4954,28 +5644,128 @@ export async function generateMonthlySchedule(
         }
     }
 
-    if (warnings.length > 0) {
-        const { error: insertWarningsError } = await context.supabase
-            .from("schedule_generation_warnings")
-            .insert(warnings);
+    revalidatePath(`/dashboard/schedules/${generationSchedule.id}`);
+    revalidatePath(`/dashboard/schedules/${generationSchedule.id}/print`);
 
-        if (insertWarningsError) {
-            return {
-                status: "error",
-                message: `Gerei o horário, mas não consegui guardar os avisos: ${insertWarningsError.message}`,
-            };
-        }
+    return {
+        status: "success",
+        message: "Horário gerado. Usa Validar horário para rever avisos.",
+        warningsCount: warnings.length,
+    };
+}
+
+export async function validateScheduleWarnings(
+    _previousState: ValidateScheduleWarningsState,
+    formData: FormData
+): Promise<ValidateScheduleWarningsState> {
+    const scheduleId = String(formData.get("schedule_id") ?? "").trim();
+
+    if (!uuidPattern.test(scheduleId)) {
+        return {
+            status: "error",
+            message: "Horário inválido.",
+        };
     }
 
-    revalidatePath(`/dashboard/schedules/${generationSchedule.id}`);
+    const context = await getAuthenticatedContext();
+
+    if (context.error) {
+        return {
+            status: "error",
+            message: context.error,
+        };
+    }
+
+    const schedule = await getConstraintScheduleContext(context.supabase, scheduleId);
+
+    if (!schedule || schedule.organization_id !== context.organizationId) {
+        return {
+            status: "error",
+            message: "Horário inválido.",
+        };
+    }
+
+    const warningsResult = await rebuildScheduleWarningsForCurrentGrid(
+        context.supabase,
+        schedule
+    );
+
+    revalidatePath(`/dashboard/schedules/${schedule.id}`);
+
+    if (warningsResult.error) {
+        return {
+            status: "error",
+            message: warningsResult.error,
+            warningsCount: warningsResult.count,
+        };
+    }
 
     return {
         status: "success",
         message:
-            warnings.length > 0
-                ? `Horário gerado com ${warnings.length} aviso(s).`
-                : "Horário gerado sem avisos.",
-        warningsCount: warnings.length,
+            warningsResult.count > 0
+                ? `Validação concluída com ${warningsResult.count} aviso(s).`
+                : "Validação concluída sem avisos.",
+        warningsCount: warningsResult.count,
+    };
+}
+
+export async function clearScheduleWarnings(
+    _previousState: ClearScheduleWarningsState,
+    formData: FormData
+): Promise<ClearScheduleWarningsState> {
+    const scheduleId = String(formData.get("schedule_id") ?? "").trim();
+
+    if (!uuidPattern.test(scheduleId)) {
+        return {
+            status: "error",
+            message: "Horário inválido.",
+        };
+    }
+
+    const context = await getAuthenticatedContext();
+
+    if (context.error) {
+        return {
+            status: "error",
+            message: context.error,
+        };
+    }
+
+    const schedule = await getConstraintScheduleContext(context.supabase, scheduleId);
+
+    if (!schedule || schedule.organization_id !== context.organizationId) {
+        return {
+            status: "error",
+            message: "Horário inválido.",
+        };
+    }
+
+    const { count, error } = await context.supabase
+        .from("schedule_generation_warnings")
+        .delete({ count: "exact" })
+        .eq("schedule_id", schedule.id);
+
+    if (error) {
+        return {
+            status: "error",
+            message: `Não consegui limpar os avisos: ${error.message}`,
+        };
+    }
+
+    const clearedCount = count ?? 0;
+
+    revalidatePath(`/dashboard/schedules/${schedule.id}`);
+
+    return {
+        status: "success",
+        message:
+            clearedCount === 0
+                ? "Não havia avisos para limpar."
+                : `${clearedCount} ${
+                      clearedCount === 1 ? "aviso apagado" : "avisos apagados"
+                  }.`,
+        clearedCount,
     };
 }
 

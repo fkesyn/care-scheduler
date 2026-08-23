@@ -51,6 +51,11 @@ type ScheduleEntry = {
     }>;
 };
 
+type ScheduleEmployeeFfDay = {
+    employee_id: string;
+    ff_days: number;
+};
+
 const uuidPattern =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -154,6 +159,7 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
         { data: employeesData, error: employeesError },
         { data: shiftTypesData, error: shiftTypesError },
         { data: entriesData, error: entriesError },
+        { data: ffDaysData, error: ffDaysError },
         holidaysFromDb,
     ] = await Promise.all([
         supabase
@@ -177,10 +183,14 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
             .eq("schedule_id", schedule.id)
             .gte("work_date", startDate)
             .lte("work_date", endDate),
+        supabase
+            .from("schedule_employee_ff_days")
+            .select("employee_id, ff_days")
+            .eq("schedule_id", schedule.id),
         getHolidaysForDateRange(startDate, endDate),
     ]);
 
-    const loadError = employeesError ?? shiftTypesError ?? entriesError;
+    const loadError = employeesError ?? shiftTypesError ?? entriesError ?? ffDaysError;
 
     if (loadError) {
         return (
@@ -193,6 +203,7 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
     const employees = (employeesData ?? []) as Employee[];
     const shiftTypes = (shiftTypesData ?? []) as ShiftType[];
     const entries = (entriesData ?? []) as ScheduleEntry[];
+    const ffDays = (ffDaysData ?? []) as ScheduleEmployeeFfDay[];
     const fallbackHolidays = buildStaticPortugueseHolidays(
         Number(schedule.month.slice(0, 4))
     ).filter(
@@ -210,7 +221,9 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
         ),
     ];
     const entryByCell = new Map<string, string>();
-    const ffCountByEmployee = new Map<string, number>();
+    const ffCountByEmployee = new Map(
+        ffDays.map((row) => [row.employee_id, row.ff_days])
+    );
     const holidayByDate = new Map<
         string,
         {
@@ -225,13 +238,6 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
         const shiftType = firstRelation(entry.shift_types);
         const shiftCode = shiftType?.code ?? "-";
         entryByCell.set(cellKey(entry.employee_id, entry.work_date), shiftCode);
-
-        if (shiftCode === "FF") {
-            ffCountByEmployee.set(
-                entry.employee_id,
-                (ffCountByEmployee.get(entry.employee_id) ?? 0) + 1
-            );
-        }
     }
 
     for (const day of days) {
