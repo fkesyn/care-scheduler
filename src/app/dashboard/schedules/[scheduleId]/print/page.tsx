@@ -263,176 +263,192 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
     return (
         <div className="print-page p-2">
             <PrintControls />
-            <div className="print-controls mb-4">
-                <Link href={`/dashboard/schedules/${schedule.id}`} className="text-sm underline">
+            <div className="print-controls print-back-controls mb-4">
+                <Link
+                    href={`/dashboard/schedules/${schedule.id}`}
+                    className="print-back-link text-sm underline"
+                >
                     Voltar ao horário
                 </Link>
             </div>
 
-            <section className="print-sheet">
-                <header className="print-header">
-                    <div className="header-mark" aria-hidden="true">
-                        {logoSrc ? (
-                            <Image
-                                src={logoSrc}
-                                alt=""
-                                className="header-logo"
-                                width={68}
-                                height={68}
-                                unoptimized
-                            />
-                        ) : (
-                            "VOTSF"
-                        )}
-                    </div>
-                    <div className="header-text">
-                        <p className="line">Venerável Ordem Terceira de São Francisco de Vila do Conde</p>
-                        <p className="line strong">Escala de Enfermeiro de Serviço</p>
-                        <p className="line">Equipa Enfermagem</p>
-                        <p className="line small">
-                            {location?.name ?? "Geral / todos os locais"}
-                        </p>
-                    </div>
-                </header>
+            <div className="print-preview-scroll">
+                <section className="print-sheet">
+                    <header className="print-header">
+                        <div className="header-mark" aria-hidden="true">
+                            {logoSrc ? (
+                                <Image
+                                    src={logoSrc}
+                                    alt=""
+                                    className="header-logo"
+                                    width={68}
+                                    height={68}
+                                    unoptimized
+                                />
+                            ) : (
+                                "VOTSF"
+                            )}
+                        </div>
+                        <div className="header-text">
+                            <p className="line">
+                                Venerável Ordem Terceira de São Francisco de Vila do Conde
+                            </p>
+                            <p className="line strong">Escala de Enfermeiro de Serviço</p>
+                            <p className="line">Equipa Enfermagem</p>
+                            <p className="line small">
+                                {location?.name ?? "Geral / todos os locais"}
+                            </p>
+                        </div>
+                    </header>
 
-                <div className="table-wrap">
-                    <table className="schedule-table">
-                        <thead>
-                            <tr>
-                                <th className="name-col section-title" rowSpan={2}>
-                                    Equipa<br />Enfermagem
-                                </th>
-                                <th className="month-title" colSpan={days.length}>
-                                    {monthHeader(schedule.month).replace("Mês: ", "Mês:")}
-                                </th>
-                            </tr>
-                            <tr>
-                                {days.map((day) => {
-                                    const holiday = holidayByDate.get(day.dateValue);
-                                    return (
-                                        <th
-                                            key={day.dateValue}
-                                            className={[
-                                                "day-col",
-                                                day.isWeekend ? "weekend" : "",
-                                                holiday ? "holiday" : "",
-                                            ].join(" ")}
-                                        >
-                                            <div>{day.day}</div>
-                                            {holiday ? (
-                                                <div className="holiday-name">
-                                                    {compactHolidayName(holiday.name)}
-                                                </div>
-                                            ) : null}
-                                        </th>
-                                    );
-                                })}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {employees.map((employee) => (
-                                <tr key={employee.id}>
-                                    <td className="name-col employee-name">
-                                        <span>Enf.{employeePrintName(employee.name)}</span>
-                                        <span className="ff-count">
-                                            ({ffCountByEmployee.get(employee.id) ?? 0}FF)
-                                        </span>
-                                    </td>
+                    <div className="table-wrap">
+                        <table className="schedule-table">
+                            <thead>
+                                <tr>
+                                    <th className="name-col section-title" rowSpan={2}>
+                                        Equipa<br />Enfermagem
+                                    </th>
+                                    <th className="month-title" colSpan={days.length}>
+                                        {monthHeader(schedule.month).replace(
+                                            "Mês: ",
+                                            "Mês:"
+                                        )}
+                                    </th>
+                                </tr>
+                                <tr>
                                     {days.map((day) => {
                                         const holiday = holidayByDate.get(day.dateValue);
-                                        const code =
-                                            entryByCell.get(
-                                                cellKey(employee.id, day.dateValue)
-                                            ) ?? "-";
-
                                         return (
-                                            <td
-                                                key={`${employee.id}-${day.dateValue}`}
+                                            <th
+                                                key={day.dateValue}
                                                 className={[
-                                                    "cell",
+                                                    "day-col",
                                                     day.isWeekend ? "weekend" : "",
                                                     holiday ? "holiday" : "",
                                                 ].join(" ")}
                                             >
-                                                <span
-                                                    className={
-                                                        code === "M*"
-                                                            ? "print-code print-code-medication"
-                                                            : "print-code"
-                                                    }
-                                                >
-                                                    {printableShiftCode(code)}
-                                                </span>
-                                            </td>
+                                                <div>{day.day}</div>
+                                                {holiday ? (
+                                                    <div className="holiday-name">
+                                                        {compactHolidayName(holiday.name)}
+                                                    </div>
+                                                ) : null}
+                                            </th>
                                         );
                                     })}
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-
-                <div className="footer-separator" />
-                <div className="print-footer-grid">
-                    <section className="legend-box">
-                        <p className="legend-title">Legenda</p>
-                        <table className="legend-table">
+                            </thead>
                             <tbody>
-                                <tr>
-                                    <td className="code">M</td>
-                                    <td>Manhã (08h00-15h00)</td>
-                                    <td className="code strong">M</td>
-                                    <td>Turno de apoio medicação</td>
-                                </tr>
-                                <tr>
-                                    <td className="code">T</td>
-                                    <td>Tarde (13h00-20h00)</td>
-                                    <td className="code">E</td>
-                                    <td>Turno 10h00-17h00</td>
-                                </tr>
-                                <tr>
-                                    <td className="code">MT</td>
-                                    <td>Manhã + Tarde (fim de semana)</td>
-                                    <td className="code">E*</td>
-                                    <td>Turno de gestão enfermagem</td>
-                                </tr>
-                                <tr>
-                                    <td className="code">B</td>
-                                    <td>Baixa/ Licença de Maternidade</td>
-                                    <td className="code">Fe</td>
-                                    <td>Férias</td>
-                                </tr>
-                                <tr>
-                                    <td className="code">FA</td>
-                                    <td>Folga Aniversário</td>
-                                    <td className="code">FF</td>
-                                    <td>Folga em Falta (Compensação Feriado)</td>
-                                </tr>
-                                <tr>
-                                    <td className="code">F</td>
-                                    <td>Folga</td>
-                                </tr>
+                                {employees.map((employee) => (
+                                    <tr key={employee.id}>
+                                        <td className="name-col employee-name">
+                                            <span>Enf.{employeePrintName(employee.name)}</span>
+                                            <span className="ff-count">
+                                                ({ffCountByEmployee.get(employee.id) ?? 0}
+                                                FF)
+                                            </span>
+                                        </td>
+                                        {days.map((day) => {
+                                            const holiday = holidayByDate.get(
+                                                day.dateValue
+                                            );
+                                            const code =
+                                                entryByCell.get(
+                                                    cellKey(employee.id, day.dateValue)
+                                                ) ?? "-";
+
+                                            return (
+                                                <td
+                                                    key={`${employee.id}-${day.dateValue}`}
+                                                    className={[
+                                                        "cell",
+                                                        day.isWeekend ? "weekend" : "",
+                                                        holiday ? "holiday" : "",
+                                                    ].join(" ")}
+                                                >
+                                                    <span
+                                                        className={
+                                                            code === "M*"
+                                                                ? "print-code print-code-medication"
+                                                                : "print-code"
+                                                        }
+                                                    >
+                                                        {printableShiftCode(code)}
+                                                    </span>
+                                                </td>
+                                            );
+                                        })}
+                                    </tr>
+                                ))}
                             </tbody>
                         </table>
-                    </section>
+                    </div>
 
-                    <section className="notes-box">
-                        <p className="notes-title">Horário da equipa de Enfermagem:</p>
-                        <p>08:00 - 20:00</p>
-                        <p>(sábados e domingos = 08:00 - 18:30)</p>
-                        <p className="notes-title">Horário Visita Médica</p>
-                        <p>Quartas e Sextas = 15:30 - 19:00</p>
-                        <p className="notes-contact">Contacto: 936792189</p>
-                    </section>
-                </div>
+                    <div className="footer-separator" />
+                    <div className="print-footer-grid">
+                        <section className="legend-box">
+                            <p className="legend-title">Legenda</p>
+                            <table className="legend-table">
+                                <tbody>
+                                    <tr>
+                                        <td className="code">M</td>
+                                        <td>Manhã (08h00-15h00)</td>
+                                        <td className="code strong">M</td>
+                                        <td>Turno de apoio medicação</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="code">T</td>
+                                        <td>Tarde (13h00-20h00)</td>
+                                        <td className="code">E</td>
+                                        <td>Turno 10h00-17h00</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="code">MT</td>
+                                        <td>Manhã + Tarde (fim de semana)</td>
+                                        <td className="code">E*</td>
+                                        <td>Turno de gestão enfermagem</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="code">B</td>
+                                        <td>Baixa/ Licença de Maternidade</td>
+                                        <td className="code">Fe</td>
+                                        <td>Férias</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="code">FA</td>
+                                        <td>Folga Aniversário</td>
+                                        <td className="code">FF</td>
+                                        <td>Folga em Falta (Compensação Feriado)</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="code">F</td>
+                                        <td>Folga</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </section>
 
-                <p className="active-shifts">
-                    Turnos ativos no sistema:{" "}
-                    {shiftTypes.map((shiftType) => shiftType.code).join(", ") || "-"}
-                </p>
+                        <section className="notes-box">
+                            <p className="notes-title">
+                                Horário da equipa de Enfermagem:
+                            </p>
+                            <p>08:00 - 20:00</p>
+                            <p>(sábados e domingos = 08:00 - 18:30)</p>
+                            <p className="notes-title">Horário Visita Médica</p>
+                            <p>Quartas e Sextas = 15:30 - 19:00</p>
+                            <p className="notes-contact">Contacto: 936792189</p>
+                        </section>
+                    </div>
 
-                {/* TODO: Estruturar segunda página para compensações de feriados por enfermeiro. */}
-            </section>
+                    <p className="active-shifts">
+                        Turnos ativos no sistema:{" "}
+                        {shiftTypes.map((shiftType) => shiftType.code).join(", ") ||
+                            "-"}
+                    </p>
+
+                    {/* TODO: Estruturar segunda página para compensações de feriados por enfermeiro. */}
+                </section>
+            </div>
 
             <style>{`
                 @page {
@@ -444,6 +460,10 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
                     width: 100%;
                     max-width: none;
                     margin: 0;
+                }
+
+                .print-preview-scroll {
+                    width: 100%;
                 }
 
                 .print-sheet {
@@ -654,6 +674,199 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
                     color: #4b5563;
                 }
 
+                @media screen and (max-width: 768px),
+                    screen and (pointer: coarse) and (orientation: landscape) and (max-height: 520px) {
+                    body {
+                        overflow: hidden;
+                        background: #111827 !important;
+                    }
+
+                    main > .border-b.bg-card {
+                        display: none !important;
+                    }
+
+                    .print-page {
+                        width: 100vw;
+                        height: 100svh;
+                        min-height: 100svh;
+                        overflow: hidden;
+                        padding: 0 !important;
+                        background: #111827;
+                    }
+
+                    .print-action-controls {
+                        display: none !important;
+                    }
+
+                    .print-back-controls {
+                        position: sticky;
+                        top: 0;
+                        z-index: 20;
+                        display: flex;
+                        margin: 0 !important;
+                        padding: 8px;
+                        background: #ffffff;
+                        box-shadow: 0 1px 10px rgb(15 23 42 / 0.16);
+                    }
+
+                    .print-back-link {
+                        display: flex;
+                        width: 100%;
+                        min-height: 40px;
+                        align-items: center;
+                        justify-content: center;
+                        border: 1px solid #d1d5db;
+                        border-radius: 6px;
+                        background: #ffffff;
+                        color: #111827;
+                        font-weight: 600;
+                        text-decoration: none;
+                    }
+
+                    .print-preview-scroll {
+                        width: 100vw;
+                        height: calc(100svh - 56px);
+                        overflow: auto;
+                        padding: 0;
+                        background: #111827;
+                        -webkit-overflow-scrolling: touch;
+                    }
+
+                    .print-sheet {
+                        width: 1120px;
+                        min-width: 1120px;
+                        margin: 0;
+                        padding: 8px;
+                        background: #ffffff;
+                        box-shadow: none;
+                    }
+                }
+
+                @media screen and (pointer: coarse) and (orientation: landscape) and (max-height: 520px) {
+                    .print-back-controls {
+                        padding: 4px 6px;
+                    }
+
+                    .print-back-link {
+                        min-height: 32px;
+                        font-size: 12px;
+                    }
+
+                    .print-preview-scroll {
+                        height: calc(100svh - 40px);
+                    }
+
+                    .print-sheet {
+                        width: 100vw;
+                        min-width: 100vw;
+                        padding: 4px;
+                        font-size: 7px;
+                    }
+
+                    .print-header {
+                        grid-template-columns: 34px 1fr;
+                        gap: 6px;
+                        margin-bottom: 3px;
+                    }
+
+                    .header-mark {
+                        width: 30px;
+                        height: 30px;
+                        font-size: 6px;
+                        border-radius: 3px;
+                    }
+
+                    .print-header .line {
+                        font-size: 7px;
+                        line-height: 1.05;
+                    }
+
+                    .print-header .small {
+                        font-size: 6px;
+                    }
+
+                    .schedule-table th,
+                    .schedule-table td {
+                        height: 24px;
+                        padding: 1px 0;
+                    }
+
+                    .schedule-table .name-col {
+                        width: 70px;
+                    }
+
+                    .schedule-table .section-title {
+                        font-size: 8px;
+                    }
+
+                    .schedule-table .month-title {
+                        font-size: 10px;
+                    }
+
+                    .schedule-table .employee-name {
+                        font-size: 8px;
+                        line-height: 1.05;
+                    }
+
+                    .schedule-table .employee-name .ff-count {
+                        font-size: 6px;
+                        margin-top: 0;
+                    }
+
+                    .schedule-table .day-col {
+                        font-size: 9px;
+                    }
+
+                    .schedule-table .holiday-name {
+                        display: none;
+                    }
+
+                    .print-code {
+                        min-width: 0;
+                        font-size: 9px;
+                    }
+
+                    .print-code-medication {
+                        font-size: 10px;
+                    }
+
+                    .footer-separator {
+                        margin: 4px 0 3px;
+                        border-top-width: 1px;
+                    }
+
+                    .print-footer-grid {
+                        grid-template-columns: 1fr 0.55fr;
+                        gap: 4px;
+                    }
+
+                    .legend-box,
+                    .notes-box {
+                        font-size: 7px;
+                    }
+
+                    .legend-title,
+                    .notes-title {
+                        padding: 1px 3px;
+                    }
+
+                    .legend-table td {
+                        padding: 0 2px;
+                    }
+
+                    .legend-table .code {
+                        width: 16px;
+                    }
+
+                    .notes-box p {
+                        padding: 1px 2px;
+                    }
+
+                    .active-shifts {
+                        display: none;
+                    }
+                }
+
                 @media print {
                     * {
                         -webkit-print-color-adjust: exact !important;
@@ -676,6 +889,19 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
 
                     .print-page {
                         padding: 0 !important;
+                    }
+
+                    .print-preview-scroll {
+                        overflow: visible !important;
+                        padding: 0 !important;
+                    }
+
+                    .print-sheet {
+                        width: 100% !important;
+                        min-width: 0 !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        box-shadow: none !important;
                     }
 
                     .schedule-table .weekend:not(.holiday) {

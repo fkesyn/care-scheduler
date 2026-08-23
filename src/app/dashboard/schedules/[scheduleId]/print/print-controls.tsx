@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 
 export function PrintControls() {
     return (
-        <div className="print-controls mb-4 flex justify-end">
+        <div className="print-controls print-action-controls mb-4 flex justify-end">
             <Button type="button" onClick={() => window.print()}>
                 <PrinterIcon />
                 Imprimir / Guardar PDF
