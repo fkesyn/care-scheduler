@@ -73,7 +73,8 @@ type CellEvaluation = {
     messages: string[];
 };
 
-const dayOffCodes = new Set(["F", "FF", "Fe"]);
+const dayOffCodes = new Set(["F", "FF", "Fe", "B", "FA"]);
+const ffBalanceNonWorkCodes = new Set(["F", "FF", "Fe", "B", "FA"]);
 
 function buildCellKey(employeeId: string, dateValue: string) {
     return `${employeeId}:${dateValue}`;
@@ -82,6 +83,40 @@ function buildCellKey(employeeId: string, dateValue: string) {
 function compactEmployeeName(name: string) {
     const normalizedName = name.replace(/^enf\.?\s*/i, "").trim();
     return normalizedName.split(/\s+/)[0] ?? normalizedName;
+}
+
+function coerceFfDayValue(value: string) {
+    const normalizedValue = value.trim() === "" ? "0" : value;
+    const parsedValue = Number(normalizedValue);
+
+    if (!Number.isFinite(parsedValue)) {
+        return 0;
+    }
+
+    return Math.trunc(parsedValue);
+}
+
+function clampFfDayValue(value: number) {
+    return Math.min(999, Math.max(0, value));
+}
+
+function isWorkShiftForFfBalance(shiftType: ScheduleGridShiftType | null) {
+    return Boolean(shiftType && !ffBalanceNonWorkCodes.has(shiftType.code));
+}
+
+function ffBalanceImpactForCell(
+    day: ScheduleGridDay,
+    shiftType: ScheduleGridShiftType | null
+) {
+    if (shiftType?.code === "FF") {
+        return -1;
+    }
+
+    if (day.isHoliday && isWorkShiftForFfBalance(shiftType)) {
+        return day.isWeekend ? 2 : 1;
+    }
+
+    return 0;
 }
 
 function constraintTypeLabel(constraintType: string) {
@@ -337,6 +372,7 @@ export function ScheduleGrid({
     const gridMinimumWidthRem = 7 + days.length * 1.55;
 
     function mutateCell(
+        day: ScheduleGridDay,
         cellKey: string,
         employeeId: string,
         workDate: string,
@@ -349,10 +385,35 @@ export function ScheduleGrid({
 
         setSavingCellKey(cellKey);
         setErrorMessage(null);
+        const previousFfValue =
+            ffDayValues[employeeId] ??
+            String(employeesById.get(employeeId)?.ffDays ?? 0);
+        const previousShiftType = previousShiftTypeId
+            ? shiftTypesById.get(previousShiftTypeId) ?? null
+            : null;
+        const nextShiftType = nextShiftTypeId
+            ? shiftTypesById.get(nextShiftTypeId) ?? null
+            : null;
+        const ffDelta =
+            ffBalanceImpactForCell(day, nextShiftType) -
+            ffBalanceImpactForCell(day, previousShiftType);
+        const nextFfValue = clampFfDayValue(
+            coerceFfDayValue(previousFfValue) + ffDelta
+        );
+        const nextFfValueText = String(nextFfValue);
+
         setLocalValues((current) => ({
             ...current,
             [cellKey]: nextShiftTypeId,
         }));
+
+        if (ffDelta !== 0) {
+            setFfDayValues((current) => ({
+                ...current,
+                [employeeId]: nextFfValueText,
+            }));
+            setSavingFfEmployeeId(employeeId);
+        }
 
         startTransition(() => {
             void (async () => {
@@ -374,12 +435,43 @@ export function ScheduleGrid({
                         ...current,
                         [cellKey]: previousShiftTypeId,
                     }));
+                    if (ffDelta !== 0) {
+                        setFfDayValues((current) => ({
+                            ...current,
+                            [employeeId]: previousFfValue,
+                        }));
+                    }
                     setErrorMessage(result.message ?? "Não consegui guardar a célula.");
                 } else {
+                    if (ffDelta !== 0) {
+                        const ffResult = await updateScheduleEmployeeFfDays({
+                            employeeId,
+                            ffDays: nextFfValue,
+                            scheduleId,
+                        });
+
+                        if (ffResult.status === "error") {
+                            setFfDayValues((current) => ({
+                                ...current,
+                                [employeeId]: previousFfValue,
+                            }));
+                            setErrorMessage(
+                                ffResult.message ??
+                                    "Célula guardada, mas não consegui guardar os FF."
+                            );
+                            setSavingCellKey(null);
+                            setSavingFfEmployeeId(null);
+                            return;
+                        }
+                    }
+
                     router.refresh();
                 }
 
                 setSavingCellKey(null);
+                if (ffDelta !== 0) {
+                    setSavingFfEmployeeId(null);
+                }
             })();
         });
     }
@@ -444,8 +536,8 @@ export function ScheduleGrid({
         const normalizedValue = rawValue.trim() === "" ? "0" : rawValue;
         const nextValue = Number(normalizedValue);
 
-        if (!Number.isInteger(nextValue) || nextValue < 0 || nextValue > 31) {
-            setErrorMessage("O valor de FF tem de ser um número entre 0 e 31.");
+        if (!Number.isInteger(nextValue) || nextValue < 0 || nextValue > 999) {
+            setErrorMessage("O valor de FF tem de ser um número entre 0 e 999.");
             return;
         }
 
@@ -629,11 +721,13 @@ export function ScheduleGrid({
                                                         className="h-5 w-8 rounded-sm border border-input bg-background px-1 text-center text-[10px] font-medium outline-none [appearance:textfield] focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-70 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                                                         disabled={
                                                             !canManage ||
-                                                            savingFfEmployeeId === employee.id
+                                                            savingFfEmployeeId ===
+                                                                employee.id ||
+                                                            Boolean(savingCellKey)
                                                         }
                                                         inputMode="numeric"
                                                         min={0}
-                                                        max={31}
+                                                        max={999}
                                                         step={1}
                                                         type="number"
                                                         value={
@@ -749,6 +843,7 @@ export function ScheduleGrid({
                                                     value={selectedShiftTypeId}
                                                     onChange={(event) => {
                                                         mutateCell(
+                                                            day,
                                                             cellKey,
                                                             employee.id,
                                                             day.dateValue,

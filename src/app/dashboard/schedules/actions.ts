@@ -2649,10 +2649,10 @@ export async function updateScheduleEmployeeFfDays(
         };
     }
 
-    if (!Number.isInteger(ffDays) || ffDays < 0 || ffDays > 31) {
+    if (!Number.isInteger(ffDays) || ffDays < 0 || ffDays > 999) {
         return {
             status: "error",
-            message: "O valor de FF tem de ser um número entre 0 e 31.",
+            message: "O valor de FF tem de ser um número entre 0 e 999.",
         };
     }
 
@@ -2688,15 +2688,15 @@ export async function updateScheduleEmployeeFfDays(
     }
 
     const { error } = await context.supabase
-        .from("schedule_employee_ff_days")
+        .from("employee_ff_balances")
         .upsert(
             {
                 employee_id: employeeId,
                 ff_days: ffDays,
-                schedule_id: schedule.id,
+                organization_id: schedule.organization_id,
             },
             {
-                onConflict: "schedule_id,employee_id",
+                onConflict: "organization_id,employee_id",
             }
         )
         .select("id")

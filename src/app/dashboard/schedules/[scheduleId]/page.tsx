@@ -48,6 +48,7 @@ type MonthlySchedule = {
     id: string;
     location_id: string | null;
     month: string;
+    organization_id: string;
     created_at: string | null;
     updated_at: string | null;
     locations: Relation<Location>;
@@ -183,6 +184,7 @@ export default async function ScheduleDetailPage({
         id,
         location_id,
         month,
+        organization_id,
         created_at,
         updated_at,
         locations (
@@ -314,9 +316,9 @@ export default async function ScheduleDetailPage({
             .order("work_date")
             .order("created_at"),
         supabase
-            .from("schedule_employee_ff_days")
+            .from("employee_ff_balances")
             .select("employee_id, ff_days")
-            .eq("schedule_id", schedule.id),
+            .eq("organization_id", schedule.organization_id),
         supabase
             .from("public_holidays")
             .select("holiday_date, name, country_code, region")

@@ -184,9 +184,9 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
             .gte("work_date", startDate)
             .lte("work_date", endDate),
         supabase
-            .from("schedule_employee_ff_days")
+            .from("employee_ff_balances")
             .select("employee_id, ff_days")
-            .eq("schedule_id", schedule.id),
+            .eq("organization_id", schedule.organization_id),
         getHolidaysForDateRange(startDate, endDate),
     ]);
 
