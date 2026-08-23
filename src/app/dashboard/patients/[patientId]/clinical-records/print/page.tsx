@@ -19,6 +19,7 @@ type ClinicalRecord = {
     record_date: string;
     record_type: string;
     blood_pressure_value: string | null;
+    heart_rate_value: number | null;
     wound_characteristics: string | null;
     wound_treatment: string | null;
     services: Relation<{
@@ -84,6 +85,7 @@ export default async function PatientClinicalRecordsPrintPage({
                     record_date,
                     record_type,
                     blood_pressure_value,
+                    heart_rate_value,
                     wound_characteristics,
                     wound_treatment,
                     services (
@@ -166,6 +168,13 @@ export default async function PatientClinicalRecordsPrintPage({
                                         <p>
                                             <span className="font-medium">TA:</span>{" "}
                                             {record.blood_pressure_value}
+                                        </p>
+                                    ) : null}
+
+                                    {record.heart_rate_value ? (
+                                        <p>
+                                            <span className="font-medium">FC:</span>{" "}
+                                            {record.heart_rate_value}
                                         </p>
                                     ) : null}
 

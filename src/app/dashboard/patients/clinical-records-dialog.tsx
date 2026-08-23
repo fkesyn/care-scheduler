@@ -20,6 +20,7 @@ export type PatientClinicalRecord = {
     record_date: string;
     record_type: string;
     blood_pressure_value: string | null;
+    heart_rate_value: number | null;
     wound_characteristics: string | null;
     wound_treatment: string | null;
     service_name: string | null;
@@ -75,6 +76,13 @@ function ClinicalRecordCard({ record }: { record: PatientClinicalRecord }) {
                 <p className="text-sm">
                     <span className="font-medium">TA:</span>{" "}
                     {record.blood_pressure_value}
+                </p>
+            ) : null}
+
+            {record.heart_rate_value ? (
+                <p className="text-sm">
+                    <span className="font-medium">FC:</span>{" "}
+                    {record.heart_rate_value}
                 </p>
             ) : null}
 

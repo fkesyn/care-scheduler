@@ -53,6 +53,7 @@ export type AppointmentDetails = {
     clinicalRecord: {
         recordType: string;
         bloodPressureValue: string | null;
+        heartRateValue: number | null;
         woundCharacteristics: string | null;
         woundTreatment: string | null;
     } | null;
@@ -233,6 +234,7 @@ export function AppointmentDetailsDialog({
         appointment.status,
         appointment.notes ?? "",
         appointment.clinicalRecord?.bloodPressureValue ?? "",
+        appointment.clinicalRecord?.heartRateValue ?? "",
         appointment.clinicalRecord?.woundCharacteristics ?? "",
         appointment.clinicalRecord?.woundTreatment ?? "",
     ].join("-");
@@ -302,10 +304,25 @@ export function AppointmentDetailsDialog({
                             <p className="text-sm text-foreground">{appointment.notes}</p>
                         ) : null}
 
-                        {appointment.clinicalRecord?.bloodPressureValue ? (
-                            <p className="text-sm text-foreground">
-                                TA: {appointment.clinicalRecord.bloodPressureValue}
-                            </p>
+                        {appointment.clinicalRecord?.bloodPressureValue ||
+                        appointment.clinicalRecord?.heartRateValue ? (
+                            <div className="grid gap-0.5 text-sm text-foreground">
+                                {appointment.clinicalRecord.bloodPressureValue ? (
+                                    <p>
+                                        TA:{" "}
+                                        {
+                                            appointment.clinicalRecord
+                                                .bloodPressureValue
+                                        }
+                                    </p>
+                                ) : null}
+                                {appointment.clinicalRecord.heartRateValue ? (
+                                    <p>
+                                        FC:{" "}
+                                        {appointment.clinicalRecord.heartRateValue}
+                                    </p>
+                                ) : null}
+                            </div>
                         ) : null}
 
                         {appointment.clinicalRecord?.woundCharacteristics ||
@@ -375,6 +392,15 @@ export function AppointmentDetailsDialog({
                                             appointment.clinicalRecord
                                                 .bloodPressureValue
                                         }
+                                    </p>
+                                </div>
+                            ) : null}
+
+                            {appointment.clinicalRecord?.heartRateValue ? (
+                                <div className="grid gap-1">
+                                    <span className="font-medium">FC</span>
+                                    <p className="text-muted-foreground">
+                                        {appointment.clinicalRecord.heartRateValue}
                                     </p>
                                 </div>
                             ) : null}
@@ -614,42 +640,90 @@ export function AppointmentDetailsDialog({
                             </div>
 
                             {isBloodPressureService ? (
-                                <div className="grid gap-2 rounded-md border p-3">
-                                    <Label
-                                        htmlFor={`appointment-blood-pressure-${appointment.id}`}
-                                    >
-                                        Valor da tensão arterial
-                                    </Label>
-                                    <Input
-                                        id={`appointment-blood-pressure-${appointment.id}`}
-                                        name="blood_pressure_value"
-                                        defaultValue={
-                                            appointment.clinicalRecord
-                                                ?.bloodPressureValue ?? ""
-                                        }
-                                        placeholder="Ex.: 13/8 ou 130/80"
-                                        aria-describedby={
-                                            visibleState.fieldErrors
-                                                ?.bloodPressureValue
-                                                ? `appointment-blood-pressure-error-${appointment.id}`
-                                                : undefined
-                                        }
-                                        aria-invalid={Boolean(
-                                            visibleState.fieldErrors
-                                                ?.bloodPressureValue
-                                        )}
-                                    />
-                                    {visibleState.fieldErrors?.bloodPressureValue ? (
-                                        <p
-                                            id={`appointment-blood-pressure-error-${appointment.id}`}
-                                            className="text-sm text-destructive"
-                                        >
-                                            {
-                                                visibleState.fieldErrors
-                                                    .bloodPressureValue
-                                            }
-                                        </p>
-                                    ) : null}
+                                <div className="grid gap-3 rounded-md border p-3">
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                        <div className="grid gap-2">
+                                            <Label
+                                                htmlFor={`appointment-blood-pressure-${appointment.id}`}
+                                            >
+                                                Valor da tensão arterial
+                                            </Label>
+                                            <Input
+                                                id={`appointment-blood-pressure-${appointment.id}`}
+                                                name="blood_pressure_value"
+                                                defaultValue={
+                                                    appointment.clinicalRecord
+                                                        ?.bloodPressureValue ?? ""
+                                                }
+                                                placeholder="Ex.: 13/8 ou 130/80"
+                                                aria-describedby={
+                                                    visibleState.fieldErrors
+                                                        ?.bloodPressureValue
+                                                        ? `appointment-blood-pressure-error-${appointment.id}`
+                                                        : undefined
+                                                }
+                                                aria-invalid={Boolean(
+                                                    visibleState.fieldErrors
+                                                        ?.bloodPressureValue
+                                                )}
+                                            />
+                                            {visibleState.fieldErrors
+                                                ?.bloodPressureValue ? (
+                                                <p
+                                                    id={`appointment-blood-pressure-error-${appointment.id}`}
+                                                    className="text-sm text-destructive"
+                                                >
+                                                    {
+                                                        visibleState.fieldErrors
+                                                            .bloodPressureValue
+                                                    }
+                                                </p>
+                                            ) : null}
+                                        </div>
+
+                                        <div className="grid gap-2">
+                                            <Label
+                                                htmlFor={`appointment-heart-rate-${appointment.id}`}
+                                            >
+                                                FC
+                                            </Label>
+                                            <Input
+                                                id={`appointment-heart-rate-${appointment.id}`}
+                                                name="heart_rate_value"
+                                                type="number"
+                                                inputMode="numeric"
+                                                min={1}
+                                                max={300}
+                                                defaultValue={
+                                                    appointment.clinicalRecord
+                                                        ?.heartRateValue ?? ""
+                                                }
+                                                placeholder="Ex.: 72"
+                                                aria-describedby={
+                                                    visibleState.fieldErrors
+                                                        ?.heartRateValue
+                                                        ? `appointment-heart-rate-error-${appointment.id}`
+                                                        : undefined
+                                                }
+                                                aria-invalid={Boolean(
+                                                    visibleState.fieldErrors
+                                                        ?.heartRateValue
+                                                )}
+                                            />
+                                            {visibleState.fieldErrors
+                                                ?.heartRateValue ? (
+                                                <p
+                                                    id={`appointment-heart-rate-error-${appointment.id}`}
+                                                    className="text-sm text-destructive"
+                                                >
+                                                    {
+                                                        visibleState.fieldErrors
+                                                            .heartRateValue
+                                                    }
+                                                </p>
+                                            ) : null}
+                                        </div>
+                                    </div>
                                 </div>
                             ) : null}
 

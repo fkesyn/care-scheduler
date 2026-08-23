@@ -33,6 +33,7 @@ type ClinicalRecord = {
     record_date: string;
     record_type: string;
     blood_pressure_value: string | null;
+    heart_rate_value: number | null;
     wound_characteristics: string | null;
     wound_treatment: string | null;
     patients: Relation<{
@@ -81,9 +82,22 @@ function formatDate(dateValue: string) {
     }).format(new Date(`${dateValue}T00:00:00`));
 }
 
-function recordValue(record: ClinicalRecord) {
+function ClinicalRecordValue({ record }: { record: ClinicalRecord }) {
     if (record.record_type === "blood_pressure") {
-        return record.blood_pressure_value || "-";
+        if (!record.blood_pressure_value && !record.heart_rate_value) {
+            return <span>-</span>;
+        }
+
+        return (
+            <div className="grid gap-1">
+                {record.blood_pressure_value ? (
+                    <span>TA - {record.blood_pressure_value}</span>
+                ) : null}
+                {record.heart_rate_value ? (
+                    <span>FC - {record.heart_rate_value}</span>
+                ) : null}
+            </div>
+        );
     }
 
     if (record.record_type === "wound_care") {
@@ -96,10 +110,20 @@ function recordValue(record: ClinicalRecord) {
                 : null,
         ].filter(Boolean);
 
-        return parts.length > 0 ? parts.join("\n") : "-";
+        if (parts.length === 0) {
+            return <span>-</span>;
+        }
+
+        return (
+            <div className="grid gap-1">
+                {parts.map((part) => (
+                    <span key={part}>{part}</span>
+                ))}
+            </div>
+        );
     }
 
-    return "-";
+    return <span>-</span>;
 }
 
 export default async function ServiceRecordsPage({
@@ -140,6 +164,7 @@ export default async function ServiceRecordsPage({
                     record_date,
                     record_type,
                     blood_pressure_value,
+                    heart_rate_value,
                     wound_characteristics,
                     wound_treatment,
                     patients (
@@ -252,8 +277,8 @@ export default async function ServiceRecordsPage({
                                             <TableCell className="text-muted-foreground">
                                                 {employee?.name ?? "Sem responsável"}
                                             </TableCell>
-                                            <TableCell className="max-w-md whitespace-pre-wrap">
-                                                {recordValue(record)}
+                                            <TableCell className="max-w-md">
+                                                <ClinicalRecordValue record={record} />
                                             </TableCell>
                                             <TableCell className="max-w-sm whitespace-pre-wrap text-muted-foreground">
                                                 {appointment?.notes ?? "-"}

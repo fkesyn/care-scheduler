@@ -84,6 +84,7 @@ type AppointmentProfile = {
 type AppointmentClinicalRecord = {
     record_type: string;
     blood_pressure_value: string | null;
+    heart_rate_value: number | null;
     wound_characteristics: string | null;
     wound_treatment: string | null;
 };
@@ -331,6 +332,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
           appointment_clinical_records (
             record_type,
             blood_pressure_value,
+            heart_rate_value,
             wound_characteristics,
             wound_treatment
           )
@@ -446,6 +448,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                 ? {
                       recordType: clinicalRecord.record_type,
                       bloodPressureValue: clinicalRecord.blood_pressure_value,
+                      heartRateValue: clinicalRecord.heart_rate_value,
                       woundCharacteristics: clinicalRecord.wound_characteristics,
                       woundTreatment: clinicalRecord.wound_treatment,
                   }

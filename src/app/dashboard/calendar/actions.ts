@@ -27,6 +27,7 @@ export type UpdateAppointmentState = {
         scheduledDate?: string;
         appointmentStatus?: string;
         bloodPressureValue?: string;
+        heartRateValue?: string;
         woundCharacteristics?: string;
         woundTreatment?: string;
     };
@@ -113,6 +114,7 @@ type ClinicalRecordUpsert = {
     record_date: string;
     record_type: "blood_pressure" | "wound_care";
     blood_pressure_value: string | null;
+    heart_rate_value: number | null;
     wound_characteristics: string | null;
     wound_treatment: string | null;
 };
@@ -147,6 +149,38 @@ function formatCountLabel(count: number, singular: string, plural: string) {
 
 function hasTextValue(value: string) {
     return value.trim().length > 0;
+}
+
+function parseOptionalHeartRate(value: string) {
+    const normalizedValue = value.trim();
+
+    if (!normalizedValue) {
+        return {
+            value: null,
+            error: null,
+        };
+    }
+
+    if (!/^\d+$/.test(normalizedValue)) {
+        return {
+            value: null,
+            error: "A FC tem de ser um número.",
+        };
+    }
+
+    const numericValue = Number(normalizedValue);
+
+    if (numericValue <= 0 || numericValue > 300) {
+        return {
+            value: null,
+            error: "A FC deve estar entre 1 e 300.",
+        };
+    }
+
+    return {
+        value: numericValue,
+        error: null,
+    };
 }
 
 function normalizeLocationName(value: string) {
@@ -294,10 +328,12 @@ export async function updateAppointmentDetails(
     const bloodPressureValue = String(
         formData.get("blood_pressure_value") ?? ""
     ).trim();
+    const heartRateInput = String(formData.get("heart_rate_value") ?? "").trim();
     const woundCharacteristics = String(
         formData.get("wound_characteristics") ?? ""
     ).trim();
     const woundTreatment = String(formData.get("wound_treatment") ?? "").trim();
+    const heartRateResult = parseOptionalHeartRate(heartRateInput);
 
     const fieldErrors: UpdateAppointmentState["fieldErrors"] = {};
 
@@ -327,6 +363,10 @@ export async function updateAppointmentDetails(
 
     if (bloodPressureValue.length > 80) {
         fieldErrors.bloodPressureValue = "O valor de TA é demasiado longo.";
+    }
+
+    if (heartRateResult.error) {
+        fieldErrors.heartRateValue = heartRateResult.error;
     }
 
     if (woundCharacteristics.length > 2000) {
@@ -445,7 +485,8 @@ export async function updateAppointmentDetails(
     }
 
     const shouldKeepBloodPressureRecord =
-        clinicalRecordType === "blood_pressure" && hasTextValue(bloodPressureValue);
+        clinicalRecordType === "blood_pressure" &&
+        (hasTextValue(bloodPressureValue) || heartRateResult.value !== null);
     const shouldKeepWoundRecord =
         clinicalRecordType === "wound_care" &&
         (hasTextValue(woundCharacteristics) || hasTextValue(woundTreatment));
@@ -462,6 +503,7 @@ export async function updateAppointmentDetails(
                       record_date: scheduledDate,
                       record_type: "blood_pressure",
                       blood_pressure_value: bloodPressureValue,
+                      heart_rate_value: heartRateResult.value,
                       wound_characteristics: null,
                       wound_treatment: null,
                   }
@@ -474,6 +516,7 @@ export async function updateAppointmentDetails(
                       record_date: scheduledDate,
                       record_type: "wound_care",
                       blood_pressure_value: null,
+                      heart_rate_value: null,
                       wound_characteristics: woundCharacteristics || null,
                       wound_treatment: woundTreatment || null,
                   };
