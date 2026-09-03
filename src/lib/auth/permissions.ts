@@ -32,6 +32,10 @@ export function canManageData(role: UserRole) {
     return role === "admin";
 }
 
+export function canEditAppointments(role: UserRole) {
+    return role === "admin" || role === "viewer";
+}
+
 export async function getCurrentUserRole(): Promise<UserRole> {
     const supabase = await createClient();
     const {

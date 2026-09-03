@@ -3,7 +3,11 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 
 import { Button } from "@/components/ui/button";
-import { canManageData, getCurrentUserRole } from "@/lib/auth/permissions";
+import {
+    canEditAppointments,
+    canManageData,
+    getCurrentUserRole,
+} from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import {
     AppointmentDetailsDialog,
@@ -273,6 +277,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
 
     const role = await getCurrentUserRole();
     const canManage = canManageData(role);
+    const canEditExistingAppointments = canEditAppointments(role);
     const supabase = await createClient();
 
     const [
@@ -566,6 +571,8 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                                                 patients={patientOptions}
                                                 services={serviceOptions}
                                                 appointment={appointment}
+                                                canEdit={canEditExistingAppointments}
+                                                canDelete={canManage}
                                                 canManage={canManage}
                                                 triggerVariant="groupItem"
                                             />

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { canManageData, getCurrentUserRole } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { clinicalRecordTypeForService } from "./service-display";
 
@@ -341,22 +342,6 @@ export async function updateAppointmentDetails(
         fieldErrors.appointmentId = "Marcação inválida.";
     }
 
-    if (employeeId && !uuidPattern.test(employeeId)) {
-        fieldErrors.employeeId = "Escolhe um funcionário válido.";
-    }
-
-    if (!uuidPattern.test(patientId)) {
-        fieldErrors.patientId = "Escolhe um utente.";
-    }
-
-    if (!uuidPattern.test(serviceId)) {
-        fieldErrors.serviceId = "Escolhe um serviço.";
-    }
-
-    if (!datePattern.test(scheduledDate)) {
-        fieldErrors.scheduledDate = "Escolhe uma data válida.";
-    }
-
     if (!appointmentStatuses.has(appointmentStatus)) {
         fieldErrors.appointmentStatus = "Escolhe um estado válido.";
     }
@@ -396,6 +381,62 @@ export async function updateAppointmentDetails(
         return {
             status: "error",
             message: "A sessão expirou. Faz login novamente.",
+        };
+    }
+
+    const role = await getCurrentUserRole();
+    const canManage = canManageData(role);
+
+    if (!canManage) {
+        const { error } = await supabase.rpc("update_appointment_execution", {
+            p_appointment_id: appointmentId,
+            p_status: appointmentStatus,
+            p_notes: notes || null,
+            p_blood_pressure_value: bloodPressureValue || null,
+            p_heart_rate_value: heartRateResult.value,
+            p_wound_characteristics: woundCharacteristics || null,
+            p_wound_treatment: woundTreatment || null,
+        });
+
+        if (error) {
+            return {
+                status: "error",
+                message: `Não consegui atualizar a marcação: ${error.message}`,
+            };
+        }
+
+        revalidatePath("/dashboard/calendar");
+        revalidatePath("/dashboard/calendar/month");
+        revalidatePath("/dashboard/patients");
+        revalidatePath("/dashboard/services");
+
+        return {
+            status: "success",
+            message: "Marcação atualizada.",
+        };
+    }
+
+    if (employeeId && !uuidPattern.test(employeeId)) {
+        fieldErrors.employeeId = "Escolhe um funcionário válido.";
+    }
+
+    if (!uuidPattern.test(patientId)) {
+        fieldErrors.patientId = "Escolhe um utente.";
+    }
+
+    if (!uuidPattern.test(serviceId)) {
+        fieldErrors.serviceId = "Escolhe um serviço.";
+    }
+
+    if (!datePattern.test(scheduledDate)) {
+        fieldErrors.scheduledDate = "Escolhe uma data válida.";
+    }
+
+    if (Object.keys(fieldErrors).length > 0) {
+        return {
+            status: "error",
+            message: "Confirma os campos obrigatórios.",
+            fieldErrors,
         };
     }
 
