@@ -342,6 +342,10 @@ export async function updateAppointmentDetails(
         fieldErrors.appointmentId = "Marcação inválida.";
     }
 
+    if (employeeId && !uuidPattern.test(employeeId)) {
+        fieldErrors.employeeId = "Escolhe um funcionário válido.";
+    }
+
     if (!appointmentStatuses.has(appointmentStatus)) {
         fieldErrors.appointmentStatus = "Escolhe um estado válido.";
     }
@@ -390,6 +394,7 @@ export async function updateAppointmentDetails(
     if (!canManage) {
         const { error } = await supabase.rpc("update_appointment_execution", {
             p_appointment_id: appointmentId,
+            p_employee_id: employeeId || null,
             p_status: appointmentStatus,
             p_notes: notes || null,
             p_blood_pressure_value: bloodPressureValue || null,
@@ -414,10 +419,6 @@ export async function updateAppointmentDetails(
             status: "success",
             message: "Marcação atualizada.",
         };
-    }
-
-    if (employeeId && !uuidPattern.test(employeeId)) {
-        fieldErrors.employeeId = "Escolhe um funcionário válido.";
     }
 
     if (!uuidPattern.test(patientId)) {

@@ -64,6 +64,7 @@ type AppointmentDetailsDialogProps = {
     canEdit?: boolean;
     canDelete?: boolean;
     canManage?: boolean;
+    currentUserEmployeeId?: string | null;
     employees: AppointmentEmployeeOption[];
     patients: AppointmentPatientOption[];
     services: AppointmentServiceOption[];
@@ -179,6 +180,7 @@ export function AppointmentDetailsDialog({
     canEdit,
     canDelete,
     canManage = true,
+    currentUserEmployeeId,
     employees,
     patients,
     services,
@@ -220,6 +222,8 @@ export function AppointmentDetailsDialog({
     );
     const isBloodPressureService = selectedMeasurementType === "blood_pressure";
     const isWoundCareService = selectedMeasurementType === "wound_care";
+    const defaultEmployeeId =
+        appointment.employeeId ?? currentUserEmployeeId ?? "";
 
     const setOpen = (nextOpen: boolean) => {
         updateDialog.setOpen(nextOpen);
@@ -511,60 +515,60 @@ export function AppointmentDetailsDialog({
                                 ) : null}
                             </div>
 
+                            <div className="grid gap-2">
+                                <Label
+                                    htmlFor={`appointment-employee-${appointment.id}`}
+                                >
+                                    Equipa
+                                </Label>
+                                <select
+                                    id={`appointment-employee-${appointment.id}`}
+                                    name="employee_id"
+                                    defaultValue={defaultEmployeeId}
+                                    className={selectClassName(
+                                        Boolean(
+                                            visibleState.fieldErrors?.employeeId
+                                        )
+                                    )}
+                                    aria-describedby={
+                                        visibleState.fieldErrors?.employeeId
+                                            ? `appointment-employee-error-${appointment.id}`
+                                            : undefined
+                                    }
+                                    aria-invalid={Boolean(
+                                        visibleState.fieldErrors?.employeeId
+                                    )}
+                                >
+                                    <option value="">Sem responsável</option>
+                                    {appointment.employeeId &&
+                                    !hasCurrentEmployee ? (
+                                        <option value={appointment.employeeId}>
+                                            {appointment.employeeLabel ??
+                                                "Responsável indisponível"}
+                                        </option>
+                                    ) : null}
+                                    {employees.map((employee) => (
+                                        <option
+                                            key={employee.id}
+                                            value={employee.id}
+                                        >
+                                            {employee.name} ·{" "}
+                                            {roleLabel(employee.role)}
+                                        </option>
+                                    ))}
+                                </select>
+                                {visibleState.fieldErrors?.employeeId ? (
+                                    <p
+                                        id={`appointment-employee-error-${appointment.id}`}
+                                        className="text-sm text-destructive"
+                                    >
+                                        {visibleState.fieldErrors.employeeId}
+                                    </p>
+                                ) : null}
+                            </div>
+
                             {canManage ? (
                                 <>
-                                    <div className="grid gap-2">
-                                        <Label
-                                            htmlFor={`appointment-employee-${appointment.id}`}
-                                        >
-                                            Equipa
-                                        </Label>
-                                        <select
-                                            id={`appointment-employee-${appointment.id}`}
-                                            name="employee_id"
-                                            defaultValue={appointment.employeeId ?? ""}
-                                            className={selectClassName(
-                                                Boolean(
-                                                    visibleState.fieldErrors?.employeeId
-                                                )
-                                            )}
-                                            aria-describedby={
-                                                visibleState.fieldErrors?.employeeId
-                                                    ? `appointment-employee-error-${appointment.id}`
-                                                    : undefined
-                                            }
-                                            aria-invalid={Boolean(
-                                                visibleState.fieldErrors?.employeeId
-                                            )}
-                                        >
-                                            <option value="">Sem responsável</option>
-                                            {appointment.employeeId &&
-                                            !hasCurrentEmployee ? (
-                                                <option value={appointment.employeeId}>
-                                                    {appointment.employeeLabel ??
-                                                        "Responsável indisponível"}
-                                                </option>
-                                            ) : null}
-                                            {employees.map((employee) => (
-                                                <option
-                                                    key={employee.id}
-                                                    value={employee.id}
-                                                >
-                                                    {employee.name} ·{" "}
-                                                    {roleLabel(employee.role)}
-                                                </option>
-                                            ))}
-                                        </select>
-                                        {visibleState.fieldErrors?.employeeId ? (
-                                            <p
-                                                id={`appointment-employee-error-${appointment.id}`}
-                                                className="text-sm text-destructive"
-                                            >
-                                                {visibleState.fieldErrors.employeeId}
-                                            </p>
-                                        ) : null}
-                                    </div>
-
                                     <div className="grid gap-2">
                                         <Label
                                             htmlFor={`appointment-patient-${appointment.id}`}
@@ -697,13 +701,6 @@ export function AppointmentDetailsDialog({
                                             {appointment.measurementLabel
                                                 ? ` · ${appointment.measurementLabel}`
                                                 : ""}
-                                        </span>
-                                    </div>
-                                    <div className="grid gap-1">
-                                        <span className="font-medium">Equipa</span>
-                                        <span className="text-muted-foreground">
-                                            {appointment.employeeLabel ??
-                                                "Sem responsável atribuído"}
                                         </span>
                                     </div>
                                     <div className="grid gap-1">

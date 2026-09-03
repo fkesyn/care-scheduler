@@ -59,6 +59,7 @@ type Employee = {
     id: string;
     name: string;
     role: string;
+    email: string | null;
     active: boolean | null;
 };
 
@@ -279,6 +280,9 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
     const canManage = canManageData(role);
     const canEditExistingAppointments = canEditAppointments(role);
     const supabase = await createClient();
+    const {
+        data: { user },
+    } = await supabase.auth.getUser();
 
     const [
         { data: locations, error: locationsError },
@@ -290,7 +294,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
         supabase.from("locations").select("id, name, color").order("name"),
         supabase
             .from("employees")
-            .select("id, name, role, active")
+            .select("id, name, role, email, active")
             .eq("active", true)
             .order("name"),
         supabase
@@ -387,6 +391,14 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             role: employee.role,
         })
     );
+    const currentUserEmail = user?.email?.trim().toLowerCase() ?? null;
+    const currentUserEmployeeId =
+        currentUserEmail && !canManage
+            ? employeeRows.find(
+                  (employee) =>
+                      employee.email?.trim().toLowerCase() === currentUserEmail
+              )?.id ?? null
+            : null;
 
     const patientOptions: AppointmentPatientOption[] = patientRows.map(
         (patient) => ({
@@ -574,6 +586,9 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                                                 canEdit={canEditExistingAppointments}
                                                 canDelete={canManage}
                                                 canManage={canManage}
+                                                currentUserEmployeeId={
+                                                    currentUserEmployeeId
+                                                }
                                                 triggerVariant="groupItem"
                                             />
                                         ))}
