@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import { AuthLinkHandler } from "@/app/auth/auth-link-handler";
 
 export default function HomePage() {
-  redirect("/login");
+  return <AuthLinkHandler fallbackPath="/login" />;
 }
