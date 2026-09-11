@@ -486,8 +486,10 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                             </p>
                         </div>
 
-                        {canManage ? (
+                        {canEditExistingAppointments ? (
                             <NewAppointmentDialog
+                                canManage={canManage}
+                                currentUserEmployeeId={currentUserEmployeeId}
                                 employees={employeeOptions}
                                 patients={patientOptions}
                                 services={serviceOptions}

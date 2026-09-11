@@ -44,6 +44,8 @@ export type AppointmentEmployeeOption = {
 };
 
 type NewAppointmentDialogProps = {
+    canManage?: boolean;
+    currentUserEmployeeId?: string | null;
     employees: AppointmentEmployeeOption[];
     patients: AppointmentPatientOption[];
     services: AppointmentServiceOption[];
@@ -94,6 +96,8 @@ function roleLabel(role: string) {
 }
 
 export function NewAppointmentDialog({
+    canManage = true,
+    currentUserEmployeeId,
     employees,
     patients,
     services,
@@ -103,7 +107,11 @@ export function NewAppointmentDialog({
     const { closeDialog, open, setOpen, showFormAgain, visibleState } =
         useActionDialog(state, initialState);
     const formRef = useRef<HTMLFormElement>(null);
+    const currentUserEmployee = currentUserEmployeeId
+        ? employees.find((employee) => employee.id === currentUserEmployeeId)
+        : null;
     const isDisabled = patients.length === 0 || services.length === 0;
+    const isSubmitDisabled = isDisabled || (!canManage && !currentUserEmployee);
 
     useEffect(() => {
         if (visibleState.status === "success") {
@@ -145,75 +153,94 @@ export function NewAppointmentDialog({
                         </DialogFooter>
                     </div>
                 ) : (
-                <form ref={formRef} action={formAction} className="grid gap-4">
-                    <div className="grid gap-2">
-                        <Label htmlFor="appointment-employee">Equipa</Label>
-                        <select
-                            id="appointment-employee"
-                            name="employee_id"
-                            defaultValue=""
-                            className="h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                            aria-describedby={
-                                visibleState.fieldErrors?.employeeId
-                                    ? "appointment-employee-error"
-                                    : undefined
-                            }
-                            aria-invalid={Boolean(visibleState.fieldErrors?.employeeId)}
-                        >
-                            <option value="">
-                                Sem responsável atribuído
-                            </option>
-                            {employees.map((employee) => (
-                                <option key={employee.id} value={employee.id}>
-                                    {employee.name} · {roleLabel(employee.role)}
-                                </option>
-                            ))}
-                        </select>
-                        {visibleState.fieldErrors?.employeeId ? (
-                            <p
-                                id="appointment-employee-error"
-                                className="text-sm text-destructive"
-                            >
-                                {visibleState.fieldErrors.employeeId}
-                            </p>
-                        ) : null}
-                    </div>
+                    <form ref={formRef} action={formAction} className="grid gap-4">
+                        <div className="grid gap-2">
+                            <Label htmlFor="appointment-employee">Equipa</Label>
+                            {canManage ? (
+                                <select
+                                    id="appointment-employee"
+                                    name="employee_id"
+                                    defaultValue=""
+                                    className="h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                    aria-describedby={
+                                        visibleState.fieldErrors?.employeeId
+                                            ? "appointment-employee-error"
+                                            : undefined
+                                    }
+                                    aria-invalid={Boolean(
+                                        visibleState.fieldErrors?.employeeId
+                                    )}
+                                >
+                                    <option value="">
+                                        Sem responsável atribuído
+                                    </option>
+                                    {employees.map((employee) => (
+                                        <option key={employee.id} value={employee.id}>
+                                            {employee.name} ·{" "}
+                                            {roleLabel(employee.role)}
+                                        </option>
+                                    ))}
+                                </select>
+                            ) : (
+                                <Input
+                                    id="appointment-employee"
+                                    value={
+                                        currentUserEmployee
+                                            ? `${currentUserEmployee.name} · ${roleLabel(
+                                                  currentUserEmployee.role
+                                              )}`
+                                            : "Sem elemento da equipa ligado ao teu email"
+                                    }
+                                    disabled
+                                />
+                            )}
+                            {visibleState.fieldErrors?.employeeId ? (
+                                <p
+                                    id="appointment-employee-error"
+                                    className="text-sm text-destructive"
+                                >
+                                    {visibleState.fieldErrors.employeeId}
+                                </p>
+                            ) : null}
+                        </div>
 
-                    <div className="grid gap-2">
-                        <Label htmlFor="appointment-patient">Utente</Label>
-                        <select
-                            id="appointment-patient"
-                            name="patient_id"
-                            defaultValue=""
-                            className="h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                            aria-describedby={
-                                visibleState.fieldErrors?.patientId
-                                    ? "appointment-patient-error"
-                                    : undefined
-                            }
-                            aria-invalid={Boolean(visibleState.fieldErrors?.patientId)}
-                            required
-                        >
-                            <option value="" disabled>
-                                Escolher utente
-                            </option>
-                            {patients.map((patient) => (
-                                <option key={patient.id} value={patient.id}>
-                                    {patient.name}
-                                    {` · ${patient.locationName}`}
-                                    {patient.isDiabetic ? " · diabético" : ""}
-                                </option>
-                            ))}
-                        </select>
-                        {visibleState.fieldErrors?.patientId ? (
-                            <p
-                                id="appointment-patient-error"
-                                className="text-sm text-destructive"
+                        <div className="grid gap-2">
+                            <Label htmlFor="appointment-patient">Utente</Label>
+                            <select
+                                id="appointment-patient"
+                                name="patient_id"
+                                defaultValue=""
+                                className="h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                                aria-describedby={
+                                    visibleState.fieldErrors?.patientId
+                                        ? "appointment-patient-error"
+                                        : undefined
+                                }
+                                aria-invalid={Boolean(
+                                    visibleState.fieldErrors?.patientId
+                                )}
+                                required
                             >
-                                {visibleState.fieldErrors.patientId}
-                            </p>
-                        ) : null}
-                    </div>
+                                <option value="" disabled>
+                                    Escolher utente
+                                </option>
+                                {patients.map((patient) => (
+                                    <option key={patient.id} value={patient.id}>
+                                        {patient.name}
+                                        {` · ${patient.locationName}`}
+                                        {patient.isDiabetic ? " · diabético" : ""}
+                                    </option>
+                                ))}
+                            </select>
+                            {visibleState.fieldErrors?.patientId ? (
+                                <p
+                                    id="appointment-patient-error"
+                                    className="text-sm text-destructive"
+                                >
+                                    {visibleState.fieldErrors.patientId}
+                                </p>
+                            ) : null}
+                        </div>
 
                     <div className="grid gap-2">
                         <Label htmlFor="appointment-service">Serviço</Label>
@@ -303,7 +330,7 @@ export function NewAppointmentDialog({
                         <Button type="button" variant="outline" onClick={closeDialog}>
                             Cancelar
                         </Button>
-                        <SubmitButton disabled={isDisabled} />
+                        <SubmitButton disabled={isSubmitDisabled} />
                     </DialogFooter>
                 </form>
                 )}

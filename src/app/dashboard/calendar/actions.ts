@@ -137,6 +137,50 @@ async function getExistingProfileId(
     return String(data.id);
 }
 
+async function getEmployeeIdForUserEmail(
+    supabase: Awaited<ReturnType<typeof createClient>>,
+    email: string | null | undefined
+) {
+    const normalizedEmail = email?.trim().toLowerCase() ?? "";
+
+    if (!normalizedEmail) {
+        return {
+            employeeId: null,
+            message:
+                "Não consegui associar este utilizador a um elemento da equipa.",
+        };
+    }
+
+    const { data, error } = await supabase
+        .from("employees")
+        .select("id")
+        .eq("active", true)
+        .ilike("email", normalizedEmail)
+        .order("name")
+        .limit(1)
+        .maybeSingle();
+
+    if (error) {
+        return {
+            employeeId: null,
+            message: `Não consegui validar o elemento da equipa: ${error.message}`,
+        };
+    }
+
+    if (!data) {
+        return {
+            employeeId: null,
+            message:
+                "Não encontrei um elemento da equipa ativo com o email deste utilizador.",
+        };
+    }
+
+    return {
+        employeeId: String(data.id),
+        message: null,
+    };
+}
+
 function formatDateValue(year: number, month: number, day: number) {
     return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(
         2,
@@ -253,10 +297,6 @@ export async function createAppointment(
 
     const fieldErrors: CreateAppointmentState["fieldErrors"] = {};
 
-    if (employeeId && !uuidPattern.test(employeeId)) {
-        fieldErrors.employeeId = "Escolhe um funcionário válido.";
-    }
-
     if (!patientId) {
         fieldErrors.patientId = "Escolhe um utente.";
     }
@@ -289,8 +329,42 @@ export async function createAppointment(
         };
     }
 
+    const role = await getCurrentUserRole();
+    const canManage = canManageData(role);
+    let appointmentEmployeeId = employeeId || null;
+
+    if (canManage) {
+        if (employeeId && !uuidPattern.test(employeeId)) {
+            return {
+                status: "error",
+                message: "Confirma os campos obrigatórios.",
+                fieldErrors: {
+                    employeeId: "Escolhe um funcionário válido.",
+                },
+            };
+        }
+    } else {
+        const employeeResult = await getEmployeeIdForUserEmail(
+            supabase,
+            user.email
+        );
+
+        if (!employeeResult.employeeId) {
+            return {
+                status: "error",
+                message: employeeResult.message ?? "Equipa inválida.",
+                fieldErrors: {
+                    employeeId:
+                        "Pede a um admin para ligar o teu email ao teu registo na Equipa.",
+                },
+            };
+        }
+
+        appointmentEmployeeId = employeeResult.employeeId;
+    }
+
     const { error } = await supabase.rpc("create_appointment", {
-        p_employee_id: employeeId || null,
+        p_employee_id: appointmentEmployeeId,
         p_patient_id: patientId,
         p_service_id: serviceId,
         p_scheduled_date: scheduledDate,
@@ -342,10 +416,6 @@ export async function updateAppointmentDetails(
         fieldErrors.appointmentId = "Marcação inválida.";
     }
 
-    if (employeeId && !uuidPattern.test(employeeId)) {
-        fieldErrors.employeeId = "Escolhe um funcionário válido.";
-    }
-
     if (!appointmentStatuses.has(appointmentStatus)) {
         fieldErrors.appointmentStatus = "Escolhe um estado válido.";
     }
@@ -392,9 +462,25 @@ export async function updateAppointmentDetails(
     const canManage = canManageData(role);
 
     if (!canManage) {
+        const employeeResult = await getEmployeeIdForUserEmail(
+            supabase,
+            user.email
+        );
+
+        if (!employeeResult.employeeId) {
+            return {
+                status: "error",
+                message: employeeResult.message ?? "Equipa inválida.",
+                fieldErrors: {
+                    employeeId:
+                        "Pede a um admin para ligar o teu email ao teu registo na Equipa.",
+                },
+            };
+        }
+
         const { error } = await supabase.rpc("update_appointment_execution", {
             p_appointment_id: appointmentId,
-            p_employee_id: employeeId || null,
+            p_employee_id: employeeResult.employeeId,
             p_status: appointmentStatus,
             p_notes: notes || null,
             p_blood_pressure_value: bloodPressureValue || null,
@@ -419,6 +505,10 @@ export async function updateAppointmentDetails(
             status: "success",
             message: "Marcação atualizada.",
         };
+    }
+
+    if (employeeId && !uuidPattern.test(employeeId)) {
+        fieldErrors.employeeId = "Escolhe um funcionário válido.";
     }
 
     if (!uuidPattern.test(patientId)) {

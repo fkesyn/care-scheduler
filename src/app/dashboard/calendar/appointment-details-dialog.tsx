@@ -224,6 +224,9 @@ export function AppointmentDetailsDialog({
     const isWoundCareService = selectedMeasurementType === "wound_care";
     const defaultEmployeeId =
         appointment.employeeId ?? currentUserEmployeeId ?? "";
+    const currentUserEmployee = currentUserEmployeeId
+        ? employees.find((employee) => employee.id === currentUserEmployeeId)
+        : null;
 
     const setOpen = (nextOpen: boolean) => {
         updateDialog.setOpen(nextOpen);
@@ -521,42 +524,56 @@ export function AppointmentDetailsDialog({
                                 >
                                     Equipa
                                 </Label>
-                                <select
-                                    id={`appointment-employee-${appointment.id}`}
-                                    name="employee_id"
-                                    defaultValue={defaultEmployeeId}
-                                    className={selectClassName(
-                                        Boolean(
+                                {canManage ? (
+                                    <select
+                                        id={`appointment-employee-${appointment.id}`}
+                                        name="employee_id"
+                                        defaultValue={defaultEmployeeId}
+                                        className={selectClassName(
+                                            Boolean(
+                                                visibleState.fieldErrors?.employeeId
+                                            )
+                                        )}
+                                        aria-describedby={
                                             visibleState.fieldErrors?.employeeId
-                                        )
-                                    )}
-                                    aria-describedby={
-                                        visibleState.fieldErrors?.employeeId
-                                            ? `appointment-employee-error-${appointment.id}`
-                                            : undefined
-                                    }
-                                    aria-invalid={Boolean(
-                                        visibleState.fieldErrors?.employeeId
-                                    )}
-                                >
-                                    <option value="">Sem responsável</option>
-                                    {appointment.employeeId &&
-                                    !hasCurrentEmployee ? (
-                                        <option value={appointment.employeeId}>
-                                            {appointment.employeeLabel ??
-                                                "Responsável indisponível"}
-                                        </option>
-                                    ) : null}
-                                    {employees.map((employee) => (
-                                        <option
-                                            key={employee.id}
-                                            value={employee.id}
-                                        >
-                                            {employee.name} ·{" "}
-                                            {roleLabel(employee.role)}
-                                        </option>
-                                    ))}
-                                </select>
+                                                ? `appointment-employee-error-${appointment.id}`
+                                                : undefined
+                                        }
+                                        aria-invalid={Boolean(
+                                            visibleState.fieldErrors?.employeeId
+                                        )}
+                                    >
+                                        <option value="">Sem responsável</option>
+                                        {appointment.employeeId &&
+                                        !hasCurrentEmployee ? (
+                                            <option value={appointment.employeeId}>
+                                                {appointment.employeeLabel ??
+                                                    "Responsável indisponível"}
+                                            </option>
+                                        ) : null}
+                                        {employees.map((employee) => (
+                                            <option
+                                                key={employee.id}
+                                                value={employee.id}
+                                            >
+                                                {employee.name} ·{" "}
+                                                {roleLabel(employee.role)}
+                                            </option>
+                                        ))}
+                                    </select>
+                                ) : (
+                                    <Input
+                                        id={`appointment-employee-${appointment.id}`}
+                                        value={
+                                            currentUserEmployee
+                                                ? `${currentUserEmployee.name} · ${roleLabel(
+                                                      currentUserEmployee.role
+                                                  )}`
+                                                : "Sem elemento da equipa ligado ao teu email"
+                                        }
+                                        disabled
+                                    />
+                                )}
                                 {visibleState.fieldErrors?.employeeId ? (
                                     <p
                                         id={`appointment-employee-error-${appointment.id}`}
