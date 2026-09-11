@@ -240,6 +240,7 @@ export default async function ScheduleDetailPage({
             .from("employees")
             .select("id, name, role, active, display_order")
             .eq("active", true)
+            .eq("role", "nurse")
             .order("display_order")
             .order("name"),
         supabase
@@ -353,11 +354,22 @@ export default async function ScheduleDetailPage({
 
     const employeeRows = (employees ?? []) as Employee[];
     const shiftTypeRows = (shiftTypes ?? []) as ShiftType[];
-    const entryRows = (entries ?? []) as ScheduleEntry[];
-    const constraintRows = (constraints ?? []) as ScheduleConstraintRow[];
-    const generationWarningRows =
-        (generationWarnings ?? []) as ScheduleGenerationWarning[];
-    const ffDayRows = (ffDays ?? []) as ScheduleEmployeeFfDay[];
+    const nurseEmployeeIds = new Set(employeeRows.map((employee) => employee.id));
+    const entryRows = ((entries ?? []) as ScheduleEntry[]).filter((entry) =>
+        nurseEmployeeIds.has(entry.employee_id)
+    );
+    const constraintRows = ((constraints ?? []) as ScheduleConstraintRow[]).filter(
+        (constraint) => nurseEmployeeIds.has(constraint.employee_id)
+    );
+    const generationWarningRows = (
+        (generationWarnings ?? []) as ScheduleGenerationWarning[]
+    ).filter(
+        (warning) =>
+            !warning.employee_id || nurseEmployeeIds.has(warning.employee_id)
+    );
+    const ffDayRows = ((ffDays ?? []) as ScheduleEmployeeFfDay[]).filter((row) =>
+        nurseEmployeeIds.has(row.employee_id)
+    );
     const ffDaysByEmployee = new Map(
         ffDayRows.map((row) => [row.employee_id, row.ff_days])
     );
@@ -449,7 +461,10 @@ export default async function ScheduleDetailPage({
                         <p className="text-sm text-muted-foreground">
                             {location?.name ?? "Geral / todos os locais"} ·{" "}
                             {employeeRows.length}{" "}
-                            {employeeRows.length === 1 ? "pessoa" : "pessoas"} na grelha
+                            {employeeRows.length === 1
+                                ? "enfermeiro/a"
+                                : "enfermeiros/as"}{" "}
+                            na grelha
                         </p>
                     </div>
 

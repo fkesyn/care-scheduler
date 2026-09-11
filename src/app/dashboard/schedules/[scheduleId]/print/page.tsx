@@ -166,6 +166,7 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
             .from("employees")
             .select("id, name, display_order")
             .eq("active", true)
+            .eq("role", "nurse")
             .order("display_order")
             .order("name"),
         supabase.from("shift_types").select("id, code, name").order("display_order"),
@@ -201,9 +202,14 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
     }
 
     const employees = (employeesData ?? []) as Employee[];
+    const nurseEmployeeIds = new Set(employees.map((employee) => employee.id));
     const shiftTypes = (shiftTypesData ?? []) as ShiftType[];
-    const entries = (entriesData ?? []) as ScheduleEntry[];
-    const ffDays = (ffDaysData ?? []) as ScheduleEmployeeFfDay[];
+    const entries = ((entriesData ?? []) as ScheduleEntry[]).filter((entry) =>
+        nurseEmployeeIds.has(entry.employee_id)
+    );
+    const ffDays = ((ffDaysData ?? []) as ScheduleEmployeeFfDay[]).filter((row) =>
+        nurseEmployeeIds.has(row.employee_id)
+    );
     const fallbackHolidays = buildStaticPortugueseHolidays(
         Number(schedule.month.slice(0, 4))
     ).filter(

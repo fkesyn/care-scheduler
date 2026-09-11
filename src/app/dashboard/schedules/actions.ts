@@ -433,6 +433,7 @@ async function validateEmployeeForConstraint(
         .eq("id", employeeId)
         .eq("organization_id", organizationId)
         .eq("active", true)
+        .eq("role", "nurse")
         .maybeSingle();
 
     return !error && Boolean(data);
@@ -749,6 +750,7 @@ async function rebuildScheduleWarningsForCurrentGrid(
             .select("id, name")
             .eq("organization_id", schedule.organization_id)
             .eq("active", true)
+            .eq("role", "nurse")
             .order("name"),
         supabase
             .from("shift_types")
@@ -807,13 +809,23 @@ async function rebuildScheduleWarningsForCurrentGrid(
     }
 
     const employees = (employeesData ?? []) as GenerationEmployee[];
+    const nurseEmployeeIds = new Set(employees.map((employee) => employee.id));
     const shiftTypes = (shiftTypesData ?? []) as GenerationShiftType[];
-    const constraints = (constraintsData ?? []) as GenerationConstraint[];
-    const workPreferences =
-        (workPreferencesData ?? []) as GenerationWorkPreference[];
-    const entries = (entriesData ?? []) as GenerationEntry[];
-    const existingWarnings =
-        (existingWarningsData ?? []) as ExistingScheduleWarning[];
+    const constraints = ((constraintsData ?? []) as GenerationConstraint[]).filter(
+        (constraint) => nurseEmployeeIds.has(constraint.employee_id)
+    );
+    const workPreferences = (
+        (workPreferencesData ?? []) as GenerationWorkPreference[]
+    ).filter((preference) => nurseEmployeeIds.has(preference.employee_id));
+    const entries = ((entriesData ?? []) as GenerationEntry[]).filter((entry) =>
+        nurseEmployeeIds.has(entry.employee_id)
+    );
+    const existingWarnings = (
+        (existingWarningsData ?? []) as ExistingScheduleWarning[]
+    ).filter(
+        (warning) =>
+            !warning.employee_id || nurseEmployeeIds.has(warning.employee_id)
+    );
     const holidaysFromDb = (holidaysData ?? []) as Array<{
         holiday_date: string;
         name: string;
@@ -1960,7 +1972,8 @@ export async function importScheduleConstraints(
             .from("employees")
             .select("id")
             .eq("organization_id", schedule.organization_id)
-            .eq("active", true),
+            .eq("active", true)
+            .eq("role", "nurse"),
         context.supabase
             .from("shift_types")
             .select("id")
@@ -2182,6 +2195,7 @@ export async function parseScheduleConstraintsWithAi({
             .select("id, name")
             .eq("organization_id", schedule.organization_id)
             .eq("active", true)
+            .eq("role", "nurse")
             .order("name"),
         context.supabase
             .from("shift_types")
@@ -2586,6 +2600,7 @@ export async function reorderScheduleEmployees(
         .select("id")
         .eq("organization_id", schedule.organization_id)
         .eq("active", true)
+        .eq("role", "nurse")
         .in("id", uniqueEmployeeIds);
 
     if (employeesError) {
@@ -2615,7 +2630,8 @@ export async function reorderScheduleEmployees(
                 display_order: index + 1,
             })
             .eq("id", employeeId)
-            .eq("organization_id", schedule.organization_id);
+            .eq("organization_id", schedule.organization_id)
+            .eq("role", "nurse");
 
         if (error) {
             return {
@@ -2763,6 +2779,7 @@ export async function generateMonthlySchedule(
             .select("id, name")
             .eq("organization_id", generationSchedule.organization_id)
             .eq("active", true)
+            .eq("role", "nurse")
             .order("name"),
         context.supabase
             .from("shift_types")
@@ -2808,10 +2825,14 @@ export async function generateMonthlySchedule(
     }
 
     const employees = (employeesData ?? []) as GenerationEmployee[];
+    const nurseEmployeeIds = new Set(employees.map((employee) => employee.id));
     const shiftTypes = (shiftTypesData ?? []) as GenerationShiftType[];
-    const constraints = (constraintsData ?? []) as GenerationConstraint[];
-    const workPreferences =
-        (workPreferencesData ?? []) as GenerationWorkPreference[];
+    const constraints = ((constraintsData ?? []) as GenerationConstraint[]).filter(
+        (constraint) => nurseEmployeeIds.has(constraint.employee_id)
+    );
+    const workPreferences = (
+        (workPreferencesData ?? []) as GenerationWorkPreference[]
+    ).filter((preference) => nurseEmployeeIds.has(preference.employee_id));
     const holidaysFromDb = (holidaysData ?? []) as Array<{
         holiday_date: string;
         name: string;
