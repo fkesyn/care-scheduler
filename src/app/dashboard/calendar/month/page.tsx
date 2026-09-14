@@ -9,6 +9,10 @@ import {
     getHolidaysForDateRange,
 } from "@/lib/holidays/get-holiday-for-date";
 import { syncPortugueseHolidays } from "@/lib/holidays/sync-portuguese-holidays";
+import {
+    formatSupabaseLoadError,
+    loadSupabaseWithRetry,
+} from "@/lib/supabase/load-errors";
 import { createClient } from "@/lib/supabase/server";
 import { ChangeMonthStatusDialog } from "./change-month-status-dialog";
 import { ClearMonthAppointmentsDialog } from "./clear-month-appointments-dialog";
@@ -245,44 +249,47 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
         { data: patients, error: patientsError },
         { data: services, error: servicesError },
     ] = await Promise.all([
-        supabase.from("locations").select("id, name, color").order("name"),
-        supabase
-            .from("employees")
-            .select("id, name")
-            .eq("active", true)
-            .order("name"),
-        supabase
-            .from("patients")
-            .select("id, name, location_id, is_diabetic")
-            .eq("active", true)
-            .order("name"),
-        supabase
-            .from("services")
-            .select("id, name, measurement_type")
-            .eq("active", true)
-            .order("name"),
+        loadSupabaseWithRetry("calendar/month", "locais", () =>
+            supabase.from("locations").select("id, name, color").order("name")
+        ),
+        loadSupabaseWithRetry("calendar/month", "funcionários", () =>
+            supabase
+                .from("employees")
+                .select("id, name")
+                .eq("active", true)
+                .order("name")
+        ),
+        loadSupabaseWithRetry("calendar/month", "utentes", () =>
+            supabase
+                .from("patients")
+                .select("id, name, location_id, is_diabetic")
+                .eq("active", true)
+                .order("name")
+        ),
+        loadSupabaseWithRetry("calendar/month", "serviços", () =>
+            supabase
+                .from("services")
+                .select("id, name, measurement_type")
+                .eq("active", true)
+                .order("name")
+        ),
     ]);
 
-    const filterLoadError =
-        locationsError ?? employeesError ?? patientsError ?? servicesError;
+    const filterErrors = [
+        { label: "locais", error: locationsError },
+        { label: "funcionários", error: employeesError },
+        { label: "utentes", error: patientsError },
+        { label: "serviços", error: servicesError },
+    ];
 
-    if (filterLoadError) {
-        return (
-            <div className="p-6">
-                <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
-                    <h1 className="text-2xl font-semibold">Vista mensal</h1>
-                    <p className="text-sm text-destructive">
-                        Erro ao carregar filtros: {filterLoadError.message}
-                    </p>
-                </div>
-            </div>
-        );
-    }
+    const filterLoadWarnings = filterErrors
+        .filter((item) => item.error)
+        .map((item) => formatSupabaseLoadError(item.label, item.error!));
 
-    const locationRows = (locations ?? []) as Location[];
-    const employeeRows = (employees ?? []) as Employee[];
-    const patientRows = (patients ?? []) as PatientOption[];
-    const serviceRows = (services ?? []) as ServiceOption[];
+    const locationRows = (locationsError ? [] : locations ?? []) as Location[];
+    const employeeRows = (employeesError ? [] : employees ?? []) as Employee[];
+    const patientRows = (patientsError ? [] : patients ?? []) as PatientOption[];
+    const serviceRows = (servicesError ? [] : services ?? []) as ServiceOption[];
 
     const selectedLocationId =
         params.locationId &&
@@ -358,10 +365,11 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
         return `/dashboard/calendar/month/export?${query.toString()}`;
     }
 
-    let appointmentsQuery = supabase
-        .from("appointments")
-        .select(
-            `
+    function buildAppointmentsQuery() {
+        let query = supabase
+            .from("appointments")
+            .select(
+                `
         id,
         scheduled_date,
         status,
@@ -381,31 +389,40 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
         .order("scheduled_date")
         .order("created_at");
 
-    if (selectedLocationId) {
-        appointmentsQuery = appointmentsQuery.eq(
-            "patients.location_id",
-            selectedLocationId
-        );
+        if (selectedLocationId) {
+            query = query.eq("patients.location_id", selectedLocationId);
+        }
+
+        if (selectedEmployeeId) {
+            query = query.eq("employee_id", selectedEmployeeId);
+        }
+
+        if (selectedPatientId) {
+            query = query.eq("patient_id", selectedPatientId);
+        }
+
+        if (selectedServiceId) {
+            query = query.eq("service_id", selectedServiceId);
+        }
+
+        return query;
     }
 
-    if (selectedEmployeeId) {
-        appointmentsQuery = appointmentsQuery.eq("employee_id", selectedEmployeeId);
-    }
+    const { data, error } = await loadSupabaseWithRetry(
+        "calendar/month",
+        "marcações mensais",
+        buildAppointmentsQuery
+    );
 
-    if (selectedPatientId) {
-        appointmentsQuery = appointmentsQuery.eq("patient_id", selectedPatientId);
-    }
-
-    if (selectedServiceId) {
-        appointmentsQuery = appointmentsQuery.eq("service_id", selectedServiceId);
-    }
-
-    const { data, error } = await appointmentsQuery;
-
-    const { data: monthBulkData, error: monthBulkError } = await supabase
-        .from("appointments")
-        .select(
-            `
+    const { data: monthBulkData, error: monthBulkError } =
+        await loadSupabaseWithRetry(
+            "calendar/month",
+            "dados de bulk mensal",
+            () =>
+                supabase
+                    .from("appointments")
+                    .select(
+                        `
         id,
         employee_id,
         service_id,
@@ -418,19 +435,18 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
           name
         )
       `
-        )
-        .gte("scheduled_date", startValue)
-        .lte("scheduled_date", endValue);
+                    )
+                    .gte("scheduled_date", startValue)
+                    .lte("scheduled_date", endValue)
+        );
 
-    const calendarError = error ?? monthBulkError;
-
-    if (calendarError) {
+    if (error) {
         return (
             <div className="p-6">
                 <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
                     <h1 className="text-2xl font-semibold">Vista mensal</h1>
                     <p className="text-sm text-destructive">
-                        Erro ao carregar calendário mensal: {calendarError.message}
+                        Erro ao carregar calendário mensal: {error.message}
                     </p>
                 </div>
             </div>
@@ -438,7 +454,9 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
     }
 
     const appointments = (data ?? []) as Appointment[];
-    const monthBulkAppointments = (monthBulkData ?? []) as MonthBulkAppointment[];
+    const monthBulkAppointments = (
+        monthBulkError ? [] : monthBulkData ?? []
+    ) as MonthBulkAppointment[];
     const monthHolidays = await getHolidaysForDateRange(startValue, endValue);
     const appointmentsByDate = new Map<string, Appointment[]>();
     const bulkServicesById = new Map<string, { id: string; name: string }>();
@@ -558,6 +576,26 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                 </div>
 
                 <div className="print:hidden">
+                    {filterLoadWarnings.length > 0 || monthBulkError ? (
+                        <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                            <p className="font-medium">
+                                Alguns dados não carregaram corretamente.
+                            </p>
+                            <ul className="mt-2 list-disc space-y-1 pl-5">
+                                {filterLoadWarnings.map((warning) => (
+                                    <li key={warning}>{warning}</li>
+                                ))}
+                                {monthBulkError ? (
+                                    <li>
+                                        {formatSupabaseLoadError(
+                                            "ações mensais",
+                                            monthBulkError
+                                        )}
+                                    </li>
+                                ) : null}
+                            </ul>
+                        </div>
+                    ) : null}
                     <MonthFilters
                         selectedDate={selectedDate}
                         selectedLocationId={selectedLocationId}

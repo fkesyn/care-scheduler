@@ -8,6 +8,10 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { canManageData, getCurrentUserRole } from "@/lib/auth/permissions";
+import {
+    formatSupabaseLoadError,
+    loadSupabaseWithRetry,
+} from "@/lib/supabase/load-errors";
 import { createClient } from "@/lib/supabase/server";
 import { NewScheduleDialog } from "./new-schedule-dialog";
 import { ScheduleRowActions } from "./schedule-row-actions";
@@ -68,23 +72,25 @@ export default async function SchedulesPage() {
         { data: locations, error: locationsError },
         { data: schedules, error: schedulesError },
     ] = await Promise.all([
-        supabase.from("locations").select("id, name").order("name"),
-        supabase
-            .from("monthly_schedules")
-            .select(
-                `
+        loadSupabaseWithRetry("schedules", "locais", () =>
+            supabase.from("locations").select("id, name").order("name")
+        ),
+        loadSupabaseWithRetry("schedules", "horários mensais", () =>
+            supabase
+                .from("monthly_schedules")
+                .select(
+                    `
         id,
         month,
         created_at,
         updated_at
       `
-            )
-            .order("created_at", { ascending: false }),
+                )
+                .order("created_at", { ascending: false })
+        ),
     ]);
 
-    const loadError = locationsError ?? schedulesError;
-
-    if (loadError) {
+    if (schedulesError) {
         return (
             <div className="p-6">
                 <div className="mx-auto flex w-full max-w-6xl flex-col gap-4">
@@ -92,7 +98,7 @@ export default async function SchedulesPage() {
                         Horários mensais
                     </h1>
                     <p className="text-sm text-destructive">
-                        Erro ao carregar horários: {loadError.message}
+                        Erro ao carregar horários: {schedulesError.message}
                     </p>
                     <p className="text-sm text-muted-foreground">
                         Confirma que a migration{" "}
@@ -104,7 +110,7 @@ export default async function SchedulesPage() {
         );
     }
 
-    const locationRows = (locations ?? []) as Location[];
+    const locationRows = (locationsError ? [] : locations ?? []) as Location[];
     const scheduleRows = (schedules ?? []) as MonthlySchedule[];
     const defaultLocation =
         locationRows.find((location) =>
@@ -129,13 +135,24 @@ export default async function SchedulesPage() {
                     </div>
 
                     {canManage ? (
-                        <NewScheduleDialog
-                            defaultMonth={currentMonthValue()}
-                            defaultLocationId={defaultLocation?.id ?? null}
-                            locations={locationRows}
-                        />
+                        locationsError ? null : (
+                            <NewScheduleDialog
+                                defaultMonth={currentMonthValue()}
+                                defaultLocationId={defaultLocation?.id ?? null}
+                                locations={locationRows}
+                            />
+                        )
                     ) : null}
                 </header>
+
+                {locationsError ? (
+                    <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                        {formatSupabaseLoadError(
+                            "locais para criar novos horários",
+                            locationsError
+                        )}
+                    </div>
+                ) : null}
 
                 <section className="overflow-hidden rounded-lg border bg-card shadow-xs">
                     {scheduleRows.length === 0 ? (

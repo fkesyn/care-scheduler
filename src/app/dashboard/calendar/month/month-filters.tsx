@@ -95,6 +95,7 @@ export function MonthFilters({
                             });
                         }}
                     >
+                        <option value="">Todos</option>
                         {locations.map((location) => (
                             <option key={location.id} value={location.id}>
                                 {location.name}
