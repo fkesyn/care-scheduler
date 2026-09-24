@@ -295,7 +295,7 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
         params.locationId &&
         locationRows.some((location) => location.id === params.locationId)
             ? params.locationId
-            : locationRows[0]?.id ?? "";
+            : "";
 
     const selectedEmployeeId =
         params.employeeId &&
