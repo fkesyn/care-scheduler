@@ -36,6 +36,7 @@ type Employee = {
 type Appointment = {
     id: string;
     scheduled_date: string;
+    glucose_period: string | null;
     status: string;
     notes: string | null;
     employee_id: string | null;
@@ -125,11 +126,23 @@ function measurementLabel(type: string | null | undefined) {
     }
 
     if (type === "glucose") {
-        return "Glicémia";
+        return "Glicemia capilar";
     }
 
     if (type === "wound_care") {
         return "Ferida";
+    }
+
+    return "";
+}
+
+function glucosePeriodExportLabel(period: string | null | undefined) {
+    if (period === "fasting") {
+        return "jejum";
+    }
+
+    if (period === "dinner") {
+        return "jantar";
     }
 
     return "";
@@ -501,6 +514,7 @@ export async function GET(request: Request) {
             `
           id,
           scheduled_date,
+          glucose_period,
           status,
           notes,
           employee_id,
@@ -567,6 +581,7 @@ export async function GET(request: Request) {
             "n_utente",
             "servico_nome",
             "servico_id",
+            "categoria_glicemia",
             "funcionario_nome",
             "funcionario_id",
             "notas",
@@ -592,6 +607,7 @@ export async function GET(request: Request) {
             patient?.patient_number ?? "",
             service?.name ?? "",
             service?.id ?? appointment.service_id ?? "",
+            glucosePeriodExportLabel(appointment.glucose_period),
             employee?.name ?? "",
             employee?.id ?? appointment.employee_id ?? "",
             appointment.notes ?? "",
@@ -620,6 +636,7 @@ export async function GET(request: Request) {
             "",
             "",
             "",
+            "",
         ]);
     }
 
@@ -627,7 +644,7 @@ export async function GET(request: Request) {
         {
             name: "Agendamentos",
             rows: appointmentRows,
-            widths: [14, 38, 14, 14, 22, 38, 34, 38, 16, 28, 38, 28, 38, 36, 28],
+            widths: [14, 38, 14, 14, 22, 38, 34, 38, 16, 28, 38, 18, 28, 38, 36, 28],
             autoFilter: true,
             freezeHeader: true,
         },

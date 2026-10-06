@@ -55,6 +55,7 @@ type ClinicalRecordRow = {
     record_type: string;
     blood_pressure_value: string | null;
     heart_rate_value: number | null;
+    glucose_value: number | null;
     wound_characteristics: string | null;
     wound_treatment: string | null;
     services: Relation<{
@@ -65,6 +66,7 @@ type ClinicalRecordRow = {
     }>;
     appointments: Relation<{
         notes: string | null;
+        glucose_period: string | null;
     }>;
 };
 
@@ -195,6 +197,7 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
                       record_type,
                       blood_pressure_value,
                       heart_rate_value,
+                      glucose_value,
                       wound_characteristics,
                       wound_treatment,
                       services (
@@ -204,7 +207,8 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
                         name
                       ),
                       appointments (
-                        notes
+                        notes,
+                        glucose_period
                       )
                     `
                   )
@@ -263,8 +267,10 @@ export default async function PatientsPage({ searchParams }: PatientsPageProps) 
             record_type: record.record_type,
             blood_pressure_value: record.blood_pressure_value,
             heart_rate_value: record.heart_rate_value,
+            glucose_value: record.glucose_value,
             wound_characteristics: record.wound_characteristics,
             wound_treatment: record.wound_treatment,
+            glucose_period: appointment?.glucose_period ?? null,
             service_name: service?.name ?? null,
             employee_name: employee?.name ?? null,
             appointment_notes: appointment?.notes ?? null,

@@ -21,8 +21,10 @@ export type PatientClinicalRecord = {
     record_type: string;
     blood_pressure_value: string | null;
     heart_rate_value: number | null;
+    glucose_value: number | null;
     wound_characteristics: string | null;
     wound_treatment: string | null;
+    glucose_period: string | null;
     service_name: string | null;
     employee_name: string | null;
     appointment_notes: string | null;
@@ -49,7 +51,23 @@ function recordTypeLabel(recordType: string) {
         return "Tratamento de feridas";
     }
 
+    if (recordType === "glucose") {
+        return "Glicemia capilar";
+    }
+
     return "Registo";
+}
+
+function glucosePeriodLabel(period: string | null) {
+    if (period === "fasting") {
+        return "Jejum";
+    }
+
+    if (period === "dinner") {
+        return "Jantar";
+    }
+
+    return null;
 }
 
 function ClinicalRecordCard({ record }: { record: PatientClinicalRecord }) {
@@ -61,6 +79,11 @@ function ClinicalRecordCard({ record }: { record: PatientClinicalRecord }) {
                         <Badge variant="secondary">
                             {recordTypeLabel(record.record_type)}
                         </Badge>
+                        {glucosePeriodLabel(record.glucose_period) ? (
+                            <Badge variant="outline">
+                                {glucosePeriodLabel(record.glucose_period)}
+                            </Badge>
+                        ) : null}
                         <span className="text-sm text-muted-foreground">
                             {formatDate(record.record_date)}
                         </span>
@@ -83,6 +106,13 @@ function ClinicalRecordCard({ record }: { record: PatientClinicalRecord }) {
                 <p className="text-sm">
                     <span className="font-medium">FC:</span>{" "}
                     {record.heart_rate_value}
+                </p>
+            ) : null}
+
+            {record.glucose_value ? (
+                <p className="text-sm">
+                    <span className="font-medium">Glicemia:</span>{" "}
+                    {record.glucose_value}
                 </p>
             ) : null}
 

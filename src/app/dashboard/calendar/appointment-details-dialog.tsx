@@ -10,7 +10,10 @@ import {
     updateAppointmentDetails,
     type UpdateAppointmentState,
 } from "@/app/dashboard/calendar/actions";
-import { clinicalRecordTypeForService } from "@/app/dashboard/calendar/service-display";
+import {
+    clinicalRecordTypeForService,
+    glucosePeriodLabel,
+} from "@/app/dashboard/calendar/service-display";
 import type {
     AppointmentEmployeeOption,
     AppointmentPatientOption,
@@ -39,6 +42,7 @@ export type AppointmentDetails = {
     patientId: string | null;
     serviceId: string | null;
     serviceMeasurementType: string | null;
+    glucosePeriod: string | null;
     scheduledDate: string;
     status: string;
     notes: string | null;
@@ -54,6 +58,7 @@ export type AppointmentDetails = {
         recordType: string;
         bloodPressureValue: string | null;
         heartRateValue: number | null;
+        glucoseValue: number | null;
         woundCharacteristics: string | null;
         woundTreatment: string | null;
     } | null;
@@ -140,12 +145,14 @@ function statusBadgeVariant(status: string) {
 }
 
 function serviceLabel(service: AppointmentServiceOption) {
+    if (service.measurementType === "glucose") {
+        return "Glicemia capilar";
+    }
+
     const suffix =
         service.measurementType === "blood_pressure"
             ? "TA"
-            : service.measurementType === "glucose"
-              ? "glicémia"
-              : service.measurementType === "wound_care"
+            : service.measurementType === "wound_care"
                 ? "ferida"
               : null;
 
@@ -221,7 +228,11 @@ export function AppointmentDetailsDialog({
         selectedService?.measurementType ?? appointment.serviceMeasurementType
     );
     const isBloodPressureService = selectedMeasurementType === "blood_pressure";
+    const isGlucoseService = selectedMeasurementType === "glucose";
     const isWoundCareService = selectedMeasurementType === "wound_care";
+    const appointmentGlucosePeriodLabel = glucosePeriodLabel(
+        appointment.glucosePeriod
+    );
     const defaultEmployeeId =
         appointment.employeeId ?? currentUserEmployeeId ?? "";
     const currentUserEmployee = currentUserEmployeeId
@@ -243,11 +254,13 @@ export function AppointmentDetailsDialog({
         appointment.patientId ?? "",
         appointment.serviceId ?? "",
         appointment.serviceMeasurementType ?? "",
+        appointment.glucosePeriod ?? "",
         appointment.scheduledDate,
         appointment.status,
         appointment.notes ?? "",
         appointment.clinicalRecord?.bloodPressureValue ?? "",
         appointment.clinicalRecord?.heartRateValue ?? "",
+        appointment.clinicalRecord?.glucoseValue ?? "",
         appointment.clinicalRecord?.woundCharacteristics ?? "",
         appointment.clinicalRecord?.woundTreatment ?? "",
     ].join("-");
@@ -278,6 +291,11 @@ export function AppointmentDetailsDialog({
                                             {appointment.measurementLabel}
                                         </Badge>
                                     ) : null}
+                                    {appointmentGlucosePeriodLabel ? (
+                                        <Badge variant="outline">
+                                            {appointmentGlucosePeriodLabel}
+                                        </Badge>
+                                    ) : null}
                                 </>
                             ) : (
                                 <>
@@ -305,6 +323,9 @@ export function AppointmentDetailsDialog({
                                 {appointment.serviceName}
                                 {appointment.measurementLabel
                                     ? ` · ${appointment.measurementLabel}`
+                                    : ""}
+                                {appointmentGlucosePeriodLabel
+                                    ? ` · ${appointmentGlucosePeriodLabel}`
                                     : ""}
                             </p>
                         ) : null}
@@ -336,6 +357,12 @@ export function AppointmentDetailsDialog({
                                     </p>
                                 ) : null}
                             </div>
+                        ) : null}
+
+                        {appointment.clinicalRecord?.glucoseValue ? (
+                            <p className="text-sm text-foreground">
+                                Glicemia: {appointment.clinicalRecord.glucoseValue}
+                            </p>
                         ) : null}
 
                         {appointment.clinicalRecord?.woundCharacteristics ||
@@ -379,6 +406,11 @@ export function AppointmentDetailsDialog({
                                         {appointment.measurementLabel}
                                     </Badge>
                                 ) : null}
+                                {appointmentGlucosePeriodLabel ? (
+                                    <Badge variant="outline">
+                                        {appointmentGlucosePeriodLabel}
+                                    </Badge>
+                                ) : null}
                             </div>
 
                             <p className="text-muted-foreground">
@@ -414,6 +446,17 @@ export function AppointmentDetailsDialog({
                                     <span className="font-medium">FC</span>
                                     <p className="text-muted-foreground">
                                         {appointment.clinicalRecord.heartRateValue}
+                                    </p>
+                                </div>
+                            ) : null}
+
+                            {appointment.clinicalRecord?.glucoseValue ? (
+                                <div className="grid gap-1">
+                                    <span className="font-medium">
+                                        Valor da glicemia
+                                    </span>
+                                    <p className="text-muted-foreground">
+                                        {appointment.clinicalRecord.glucoseValue}
                                     </p>
                                 </div>
                             ) : null}
@@ -486,6 +529,11 @@ export function AppointmentDetailsDialog({
                             <div className="grid gap-3 rounded-md border p-3 text-sm">
                                 <div className="flex flex-wrap items-center gap-2">
                                     <Badge variant="outline">{appointment.serviceName}</Badge>
+                                    {appointmentGlucosePeriodLabel ? (
+                                        <Badge variant="outline">
+                                            {appointmentGlucosePeriodLabel}
+                                        </Badge>
+                                    ) : null}
                                     {appointment.locationName ? (
                                         <Badge variant="outline">{appointment.locationName}</Badge>
                                     ) : null}
@@ -718,6 +766,9 @@ export function AppointmentDetailsDialog({
                                             {appointment.measurementLabel
                                                 ? ` · ${appointment.measurementLabel}`
                                                 : ""}
+                                            {appointmentGlucosePeriodLabel
+                                                ? ` · ${appointmentGlucosePeriodLabel}`
+                                                : ""}
                                         </span>
                                     </div>
                                     <div className="grid gap-1">
@@ -728,6 +779,103 @@ export function AppointmentDetailsDialog({
                                     </div>
                                 </div>
                             )}
+
+                            {isGlucoseService ? (
+                                <div className="grid gap-3 rounded-md border p-3">
+                                    {canManage ? (
+                                        <div className="grid gap-2">
+                                            <Label
+                                                htmlFor={`appointment-glucose-period-${appointment.id}`}
+                                            >
+                                                Categoria da glicemia
+                                            </Label>
+                                            <select
+                                                id={`appointment-glucose-period-${appointment.id}`}
+                                                name="glucose_period"
+                                                defaultValue={
+                                                    appointment.glucosePeriod ?? ""
+                                                }
+                                                className={selectClassName(
+                                                    Boolean(
+                                                        visibleState.fieldErrors
+                                                            ?.glucosePeriod
+                                                    )
+                                                )}
+                                                aria-describedby={
+                                                    visibleState.fieldErrors
+                                                        ?.glucosePeriod
+                                                        ? `appointment-glucose-period-error-${appointment.id}`
+                                                        : undefined
+                                                }
+                                                aria-invalid={Boolean(
+                                                    visibleState.fieldErrors
+                                                        ?.glucosePeriod
+                                                )}
+                                                required
+                                            >
+                                                <option value="" disabled>
+                                                    Escolher categoria
+                                                </option>
+                                                <option value="fasting">Jejum</option>
+                                                <option value="dinner">Jantar</option>
+                                            </select>
+                                            {visibleState.fieldErrors
+                                                ?.glucosePeriod ? (
+                                                <p
+                                                    id={`appointment-glucose-period-error-${appointment.id}`}
+                                                    className="text-sm text-destructive"
+                                                >
+                                                    {
+                                                        visibleState.fieldErrors
+                                                            .glucosePeriod
+                                                    }
+                                                </p>
+                                            ) : null}
+                                        </div>
+                                    ) : null}
+
+                                    <div className="grid gap-2">
+                                        <Label
+                                            htmlFor={`appointment-glucose-value-${appointment.id}`}
+                                        >
+                                            Valor da glicemia
+                                        </Label>
+                                        <Input
+                                            id={`appointment-glucose-value-${appointment.id}`}
+                                            name="glucose_value"
+                                            type="number"
+                                            inputMode="numeric"
+                                            min={1}
+                                            max={1000}
+                                            defaultValue={
+                                                appointment.clinicalRecord
+                                                    ?.glucoseValue ?? ""
+                                            }
+                                            placeholder="Ex.: 110"
+                                            aria-describedby={
+                                                visibleState.fieldErrors?.glucoseValue
+                                                    ? `appointment-glucose-value-error-${appointment.id}`
+                                                    : undefined
+                                            }
+                                            aria-invalid={Boolean(
+                                                visibleState.fieldErrors
+                                                    ?.glucoseValue
+                                            )}
+                                        />
+                                        {visibleState.fieldErrors?.glucoseValue ? (
+                                            <p
+                                                id={`appointment-glucose-value-error-${appointment.id}`}
+                                                className="text-sm text-destructive"
+                                            >
+                                                {
+                                                    visibleState.fieldErrors
+                                                        .glucoseValue
+                                                }
+                                            </p>
+                                        ) : null}
+                                    </div>
+                                </div>
+                            ) : null}
 
                             {isBloodPressureService ? (
                                 <div className="grid gap-3 rounded-md border p-3">

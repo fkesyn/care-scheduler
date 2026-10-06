@@ -4,7 +4,11 @@ import { revalidatePath } from "next/cache";
 
 import { canManageData, getCurrentUserRole } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
-import { clinicalRecordTypeForService } from "./service-display";
+import {
+    clinicalRecordTypeForService,
+    glucosePeriodLabel,
+    type GlucosePeriod,
+} from "./service-display";
 
 export type CreateAppointmentState = {
     status: "idle" | "success" | "error";
@@ -14,6 +18,7 @@ export type CreateAppointmentState = {
         patientId?: string;
         serviceId?: string;
         scheduledDate?: string;
+        glucosePeriods?: string;
     };
 };
 
@@ -27,8 +32,10 @@ export type UpdateAppointmentState = {
         serviceId?: string;
         scheduledDate?: string;
         appointmentStatus?: string;
+        glucosePeriod?: string;
         bloodPressureValue?: string;
         heartRateValue?: string;
+        glucoseValue?: string;
         woundCharacteristics?: string;
         woundTreatment?: string;
     };
@@ -71,6 +78,7 @@ export type CreateMonthlyAppointmentsState = {
         weekdays?: string;
         weekdayCapacity?: string;
         patientIds?: string;
+        glucosePeriods?: string;
         employeeId?: string;
     };
 };
@@ -100,6 +108,7 @@ type ExistingPatientAppointmentRow = {
     scheduled_date: string;
     patient_id: string | null;
     service_id: string | null;
+    glucose_period: string | null;
 };
 
 type ExistingCapacityAppointmentRow = {
@@ -113,9 +122,10 @@ type ClinicalRecordUpsert = {
     service_id: string;
     employee_id: string | null;
     record_date: string;
-    record_type: "blood_pressure" | "wound_care";
+    record_type: "blood_pressure" | "glucose" | "wound_care";
     blood_pressure_value: string | null;
     heart_rate_value: number | null;
+    glucose_value: number | null;
     wound_characteristics: string | null;
     wound_treatment: string | null;
 };
@@ -228,6 +238,53 @@ function parseOptionalHeartRate(value: string) {
     };
 }
 
+function parseOptionalGlucoseValue(value: string) {
+    const normalizedValue = value.trim();
+
+    if (!normalizedValue) {
+        return {
+            value: null,
+            error: null,
+        };
+    }
+
+    if (!/^\d+$/.test(normalizedValue)) {
+        return {
+            value: null,
+            error: "A glicemia tem de ser um número.",
+        };
+    }
+
+    const numericValue = Number(normalizedValue);
+
+    if (numericValue <= 0 || numericValue > 1000) {
+        return {
+            value: null,
+            error: "A glicemia deve estar entre 1 e 1000.",
+        };
+    }
+
+    return {
+        value: numericValue,
+        error: null,
+    };
+}
+
+function parseGlucosePeriods(formData: FormData) {
+    const periods = formData
+        .getAll("glucose_periods")
+        .map((value) => String(value).trim())
+        .filter((value): value is GlucosePeriod =>
+            value === "fasting" || value === "dinner"
+        );
+
+    return Array.from(new Set(periods));
+}
+
+function parseSingleGlucosePeriod(value: string) {
+    return value === "fasting" || value === "dinner" ? value : null;
+}
+
 function normalizeLocationName(value: string) {
     return value
         .normalize("NFD")
@@ -294,6 +351,7 @@ export async function createAppointment(
     const serviceId = String(formData.get("service_id") ?? "").trim();
     const scheduledDate = String(formData.get("scheduled_date") ?? "").trim();
     const notes = String(formData.get("notes") ?? "").trim();
+    const glucosePeriods = parseGlucosePeriods(formData);
 
     const fieldErrors: CreateAppointmentState["fieldErrors"] = {};
 
@@ -363,21 +421,81 @@ export async function createAppointment(
         appointmentEmployeeId = employeeResult.employeeId;
     }
 
-    const { error } = await supabase.rpc("create_appointment", {
-        p_employee_id: appointmentEmployeeId,
-        p_patient_id: patientId,
-        p_service_id: serviceId,
-        p_scheduled_date: scheduledDate,
-        p_start_time: technicalStartTime,
-        p_notes: notes || null,
-        p_status: "planned",
-    });
+    const [{ data: patient }, { data: service }] = await Promise.all([
+        supabase
+            .from("patients")
+            .select("id, is_diabetic")
+            .eq("id", patientId)
+            .eq("active", true)
+            .maybeSingle(),
+        supabase
+            .from("services")
+            .select("id, name, measurement_type")
+            .eq("id", serviceId)
+            .eq("active", true)
+            .maybeSingle(),
+    ]);
 
-    if (error) {
+    if (!patient) {
         return {
             status: "error",
-            message: `Não consegui criar a marcação: ${error.message}`,
+            message: "O utente escolhido já não está disponível.",
         };
+    }
+
+    if (!service) {
+        return {
+            status: "error",
+            message: "O serviço escolhido já não está disponível.",
+        };
+    }
+
+    const clinicalRecordType = clinicalRecordTypeForService(
+        service.name,
+        service.measurement_type
+    );
+
+    if (clinicalRecordType === "glucose" && !patient.is_diabetic) {
+        return {
+            status: "error",
+            message:
+                "Para glicemia capilar, escolhe um utente marcado como diabético.",
+        };
+    }
+
+    if (clinicalRecordType === "glucose" && glucosePeriods.length === 0) {
+        return {
+            status: "error",
+            message: "Escolhe pelo menos uma categoria de glicemia.",
+            fieldErrors: {
+                glucosePeriods: "Escolhe jejum, jantar ou ambos.",
+            },
+        };
+    }
+
+    const periodsToCreate: Array<GlucosePeriod | null> =
+        clinicalRecordType === "glucose" ? glucosePeriods : [null];
+
+    const createdCount = periodsToCreate.length;
+
+    for (const glucosePeriod of periodsToCreate) {
+        const { error } = await supabase.rpc("create_appointment", {
+            p_employee_id: appointmentEmployeeId,
+            p_patient_id: patientId,
+            p_service_id: serviceId,
+            p_scheduled_date: scheduledDate,
+            p_start_time: technicalStartTime,
+            p_notes: notes || null,
+            p_status: "planned",
+            p_glucose_period: glucosePeriod,
+        });
+
+        if (error) {
+            return {
+                status: "error",
+                message: `Não consegui criar a marcação: ${error.message}`,
+            };
+        }
     }
 
     revalidatePath("/dashboard/calendar");
@@ -385,7 +503,10 @@ export async function createAppointment(
 
     return {
         status: "success",
-        message: "Marcação criada.",
+        message:
+            createdCount === 1
+                ? "Marcação criada."
+                : `${createdCount} marcações criadas.`,
     };
 }
 
@@ -399,16 +520,19 @@ export async function updateAppointmentDetails(
     const serviceId = String(formData.get("service_id") ?? "").trim();
     const scheduledDate = String(formData.get("scheduled_date") ?? "").trim();
     const appointmentStatus = String(formData.get("status") ?? "").trim();
+    const glucosePeriodInput = String(formData.get("glucose_period") ?? "").trim();
     const notes = String(formData.get("notes") ?? "").trim();
     const bloodPressureValue = String(
         formData.get("blood_pressure_value") ?? ""
     ).trim();
     const heartRateInput = String(formData.get("heart_rate_value") ?? "").trim();
+    const glucoseValueInput = String(formData.get("glucose_value") ?? "").trim();
     const woundCharacteristics = String(
         formData.get("wound_characteristics") ?? ""
     ).trim();
     const woundTreatment = String(formData.get("wound_treatment") ?? "").trim();
     const heartRateResult = parseOptionalHeartRate(heartRateInput);
+    const glucoseValueResult = parseOptionalGlucoseValue(glucoseValueInput);
 
     const fieldErrors: UpdateAppointmentState["fieldErrors"] = {};
 
@@ -426,6 +550,14 @@ export async function updateAppointmentDetails(
 
     if (heartRateResult.error) {
         fieldErrors.heartRateValue = heartRateResult.error;
+    }
+
+    if (glucosePeriodInput && !parseSingleGlucosePeriod(glucosePeriodInput)) {
+        fieldErrors.glucosePeriod = "Escolhe uma categoria válida.";
+    }
+
+    if (glucoseValueResult.error) {
+        fieldErrors.glucoseValue = glucoseValueResult.error;
     }
 
     if (woundCharacteristics.length > 2000) {
@@ -487,6 +619,7 @@ export async function updateAppointmentDetails(
             p_heart_rate_value: heartRateResult.value,
             p_wound_characteristics: woundCharacteristics || null,
             p_wound_treatment: woundTreatment || null,
+            p_glucose_value: glucoseValueResult.value,
         });
 
         if (error) {
@@ -585,7 +718,22 @@ export async function updateAppointmentDetails(
         return {
             status: "error",
             message:
-                "Para glicémia, escolhe um utente marcado como diabético.",
+                "Para glicemia capilar, escolhe um utente marcado como diabético.",
+        };
+    }
+
+    const selectedGlucosePeriod =
+        clinicalRecordType === "glucose"
+            ? parseSingleGlucosePeriod(glucosePeriodInput)
+            : null;
+
+    if (clinicalRecordType === "glucose" && !selectedGlucosePeriod) {
+        return {
+            status: "error",
+            message: "Escolhe uma categoria de glicemia.",
+            fieldErrors: {
+                glucosePeriod: "Escolhe jejum ou jantar.",
+            },
         };
     }
 
@@ -602,6 +750,7 @@ export async function updateAppointmentDetails(
             end_time: technicalEndTimeWithSeconds,
             status: appointmentStatus,
             notes: notes || null,
+            glucose_period: selectedGlucosePeriod,
             updated_at: new Date().toISOString(),
             ...(auditProfileId ? { updated_by: auditProfileId } : {}),
         })
@@ -619,11 +768,17 @@ export async function updateAppointmentDetails(
     const shouldKeepBloodPressureRecord =
         clinicalRecordType === "blood_pressure" &&
         (hasTextValue(bloodPressureValue) || heartRateResult.value !== null);
+    const shouldKeepGlucoseRecord =
+        clinicalRecordType === "glucose" && glucoseValueResult.value !== null;
     const shouldKeepWoundRecord =
         clinicalRecordType === "wound_care" &&
         (hasTextValue(woundCharacteristics) || hasTextValue(woundTreatment));
 
-    if (shouldKeepBloodPressureRecord || shouldKeepWoundRecord) {
+    if (
+        shouldKeepBloodPressureRecord ||
+        shouldKeepGlucoseRecord ||
+        shouldKeepWoundRecord
+    ) {
         const clinicalRecord: ClinicalRecordUpsert =
             clinicalRecordType === "blood_pressure"
                 ? {
@@ -636,9 +791,25 @@ export async function updateAppointmentDetails(
                       record_type: "blood_pressure",
                       blood_pressure_value: bloodPressureValue,
                       heart_rate_value: heartRateResult.value,
+                      glucose_value: null,
                       wound_characteristics: null,
                       wound_treatment: null,
                   }
+                : clinicalRecordType === "glucose"
+                  ? {
+                        organization_id: updatedAppointment.organization_id,
+                        appointment_id: appointmentId,
+                        patient_id: patientId,
+                        service_id: serviceId,
+                        employee_id: employeeId || null,
+                        record_date: scheduledDate,
+                        record_type: "glucose",
+                        blood_pressure_value: null,
+                        heart_rate_value: null,
+                        glucose_value: glucoseValueResult.value,
+                        wound_characteristics: null,
+                        wound_treatment: null,
+                    }
                 : {
                       organization_id: updatedAppointment.organization_id,
                       appointment_id: appointmentId,
@@ -649,6 +820,7 @@ export async function updateAppointmentDetails(
                       record_type: "wound_care",
                       blood_pressure_value: null,
                       heart_rate_value: null,
+                      glucose_value: null,
                       wound_characteristics: woundCharacteristics || null,
                       wound_treatment: woundTreatment || null,
                   };
@@ -1004,6 +1176,7 @@ export async function createMonthlyAppointments(
         .getAll("patient_ids")
         .map((value) => String(value).trim())
         .filter(Boolean);
+    const glucosePeriods = parseGlucosePeriods(formData);
 
     const fieldErrors: CreateMonthlyAppointmentsState["fieldErrors"] = {};
 
@@ -1212,9 +1385,22 @@ export async function createMonthlyAppointments(
         return {
             status: "error",
             message:
-                "Para glicémia, seleciona apenas utentes marcados como diabéticos.",
+                "Para glicemia capilar, seleciona apenas utentes marcados como diabéticos.",
         };
     }
+
+    if (monthlyClinicalRecordType === "glucose" && glucosePeriods.length === 0) {
+        return {
+            status: "error",
+            message: "Escolhe pelo menos uma categoria de glicemia.",
+            fieldErrors: {
+                glucosePeriods: "Escolhe jejum, jantar ou ambos.",
+            },
+        };
+    }
+
+    const monthlyGlucosePeriods: Array<GlucosePeriod | null> =
+        monthlyClinicalRecordType === "glucose" ? glucosePeriods : [null];
 
     const startDate = formatDateValue(year, monthNumber, startDay);
     const endDate = formatDateValue(year, monthNumber, endDay);
@@ -1240,7 +1426,7 @@ export async function createMonthlyAppointments(
         await Promise.all([
             supabase
                 .from("appointments")
-                .select("scheduled_date, patient_id, service_id")
+                .select("scheduled_date, patient_id, service_id, glucose_period")
                 .in(
                     "patient_id",
                     patientRows.map((patient) => patient.id)
@@ -1293,6 +1479,7 @@ export async function createMonthlyAppointments(
         end_time: string;
         status: string;
         notes: string;
+        glucose_period: GlucosePeriod | null;
         created_by?: string;
     }> = [];
 
@@ -1356,32 +1543,52 @@ export async function createMonthlyAppointments(
         existingDatesByPatient.set(appointment.patient_id, existingDates);
 
         if (appointment.service_id === serviceId) {
+            const periodKey =
+                monthlyClinicalRecordType === "glucose"
+                    ? appointment.glucose_period ?? "none"
+                    : "single";
             const sameServiceDates =
-                existingSameServiceByPatient.get(appointment.patient_id) ??
+                existingSameServiceByPatient.get(
+                    `${appointment.patient_id}:${periodKey}`
+                ) ??
                 new Set<string>();
             sameServiceDates.add(appointment.scheduled_date);
             existingSameServiceByPatient.set(
-                appointment.patient_id,
+                `${appointment.patient_id}:${periodKey}`,
                 sameServiceDates
             );
         }
     }
 
     let skippedDuplicateCount = 0;
-    const patientsToSchedule: PatientRow[] = [];
+    const appointmentsNeeded: Array<{
+        patient: PatientRow;
+        glucosePeriod: GlucosePeriod | null;
+    }> = [];
 
     for (const patient of patientRows) {
-        const sameServiceDates = existingSameServiceByPatient.get(patient.id);
-        const alreadyHasSameService = Array.from(sameServiceDates ?? []).some(
-            (dateValue) => allowedDateSet.has(dateValue)
-        );
+        for (const glucosePeriod of monthlyGlucosePeriods) {
+            const periodKey =
+                monthlyClinicalRecordType === "glucose"
+                    ? glucosePeriod ?? "none"
+                    : "single";
+            const sameServiceDates = existingSameServiceByPatient.get(
+                `${patient.id}:${periodKey}`
+            );
+            const alreadyHasSameService = Array.from(sameServiceDates ?? []).some(
+                (dateValue) => allowedDateSet.has(dateValue)
+            );
 
-        if (alreadyHasSameService) {
-            skippedDuplicateCount += 1;
-            continue;
+            if (alreadyHasSameService) {
+                skippedDuplicateCount += 1;
+                continue;
+            }
+
+            appointmentsNeeded.push({
+                patient,
+                glucosePeriod,
+            });
         }
-
-        patientsToSchedule.push(patient);
     }
 
     const availableSlotCount = Array.from(remainingCapacityByDate.values()).reduce(
@@ -1389,11 +1596,11 @@ export async function createMonthlyAppointments(
         0
     );
 
-    if (patientsToSchedule.length > availableSlotCount) {
+    if (appointmentsNeeded.length > availableSlotCount) {
         const patientsLabel = formatCountLabel(
-            patientsToSchedule.length,
-            "utente selecionado",
-            "utentes selecionados"
+            appointmentsNeeded.length,
+            "marcação necessária",
+            "marcações necessárias"
         );
         const slotsLabel = formatCountLabel(
             availableSlotCount,
@@ -1411,7 +1618,13 @@ export async function createMonthlyAppointments(
 
     const auditProfileId = await getExistingProfileId(supabase, user.id);
 
-    function tryCreateAppointmentForDate(patient: PatientRow, dateValue: string) {
+    function tryCreateAppointmentForDate(
+        appointment: {
+            patient: PatientRow;
+            glucosePeriod: GlucosePeriod | null;
+        },
+        dateValue: string
+    ) {
         const remainingCapacity = remainingCapacityByDate.get(dateValue) ?? 0;
 
         if (remainingCapacity <= 0) {
@@ -1423,47 +1636,56 @@ export async function createMonthlyAppointments(
         appointmentsToCreate.push({
             organization_id: organizationId,
             employee_id: employeeId || null,
-            patient_id: patient.id,
+            patient_id: appointment.patient.id,
             service_id: serviceId,
             scheduled_date: dateValue,
             start_time: technicalStartTimeWithSeconds,
             end_time: technicalEndTimeWithSeconds,
             status: "planned",
             notes: "Agendamento mensal",
+            glucose_period: appointment.glucosePeriod,
             ...(auditProfileId ? { created_by: auditProfileId } : {}),
         });
 
         return true;
     }
 
-    const patientsForFallback: PatientRow[] = [];
+    const appointmentsForFallback: Array<{
+        patient: PatientRow;
+        glucosePeriod: GlucosePeriod | null;
+    }> = [];
 
-    for (const patient of patientsToSchedule) {
+    for (const appointment of appointmentsNeeded) {
         const existingDates = Array.from(
-            existingDatesByPatient.get(patient.id) ?? []
+            existingDatesByPatient.get(appointment.patient.id) ?? []
         )
             .filter((dateValue) => allowedDateSet.has(dateValue))
             .sort();
         const grouped = existingDates.some((dateValue) =>
-            tryCreateAppointmentForDate(patient, dateValue)
+            tryCreateAppointmentForDate(appointment, dateValue)
         );
 
         if (!grouped) {
-            patientsForFallback.push(patient);
+            appointmentsForFallback.push(appointment);
         }
     }
 
-    for (const patient of patientsForFallback) {
+    for (const appointment of appointmentsForFallback) {
         const scheduled = allowedDateOrder.some((dateValue) =>
-            tryCreateAppointmentForDate(patient, dateValue)
+            tryCreateAppointmentForDate(appointment, dateValue)
         );
 
         if (!scheduled) {
+            const periodLabel = glucosePeriodLabel(appointment.glucosePeriod);
+            const patientLabel = periodLabel
+                ? `${appointment.patient.name} (${periodLabel})`
+                : appointment.patient.name;
+
             return {
                 status: "error",
                 message: capacityScope.isGrouped
-                    ? `Não há capacidade diária para ${patient.name} nos dias escolhidos, contando S. Francisco e Sto António em conjunto. Nada foi criado.`
-                    : `Não há capacidade diária para ${patient.name} nos dias escolhidos. Nada foi criado.`,
+                    ? `Não há capacidade diária para ${patientLabel} nos dias escolhidos, contando S. Francisco e Sto António em conjunto. Nada foi criado.`
+                    : `Não há capacidade diária para ${patientLabel} nos dias escolhidos. Nada foi criado.`,
             };
         }
     }

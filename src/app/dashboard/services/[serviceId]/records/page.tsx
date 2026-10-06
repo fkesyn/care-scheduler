@@ -34,6 +34,7 @@ type ClinicalRecord = {
     record_type: string;
     blood_pressure_value: string | null;
     heart_rate_value: number | null;
+    glucose_value: number | null;
     wound_characteristics: string | null;
     wound_treatment: string | null;
     patients: Relation<{
@@ -44,6 +45,7 @@ type ClinicalRecord = {
     }>;
     appointments: Relation<{
         notes: string | null;
+        glucose_period: string | null;
     }>;
 };
 
@@ -82,6 +84,18 @@ function formatDate(dateValue: string) {
     }).format(new Date(`${dateValue}T00:00:00`));
 }
 
+function glucosePeriodLabel(period: string | null | undefined) {
+    if (period === "fasting") {
+        return "Jejum";
+    }
+
+    if (period === "dinner") {
+        return "Jantar";
+    }
+
+    return null;
+}
+
 function ClinicalRecordValue({ record }: { record: ClinicalRecord }) {
     if (record.record_type === "blood_pressure") {
         if (!record.blood_pressure_value && !record.heart_rate_value) {
@@ -95,6 +109,24 @@ function ClinicalRecordValue({ record }: { record: ClinicalRecord }) {
                 ) : null}
                 {record.heart_rate_value ? (
                     <span>FC - {record.heart_rate_value}</span>
+                ) : null}
+            </div>
+        );
+    }
+
+    if (record.record_type === "glucose") {
+        const appointment = firstRelation(record.appointments);
+        const periodLabel = glucosePeriodLabel(appointment?.glucose_period);
+
+        if (!record.glucose_value && !periodLabel) {
+            return <span>-</span>;
+        }
+
+        return (
+            <div className="grid gap-1">
+                {periodLabel ? <span>{periodLabel}</span> : null}
+                {record.glucose_value ? (
+                    <span>Glicemia - {record.glucose_value}</span>
                 ) : null}
             </div>
         );
@@ -165,6 +197,7 @@ export default async function ServiceRecordsPage({
                     record_type,
                     blood_pressure_value,
                     heart_rate_value,
+                    glucose_value,
                     wound_characteristics,
                     wound_treatment,
                     patients (
@@ -174,7 +207,8 @@ export default async function ServiceRecordsPage({
                       name
                     ),
                     appointments (
-                      notes
+                      notes,
+                      glucose_period
                     )
                   `
                 )

@@ -1,7 +1,7 @@
 "use client";
 
 import { PlusIcon } from "lucide-react";
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import {
@@ -67,12 +67,14 @@ function SubmitButton({ disabled }: { disabled: boolean }) {
 }
 
 function serviceLabel(service: AppointmentServiceOption) {
+    if (service.measurementType === "glucose") {
+        return "Glicemia capilar";
+    }
+
     const suffix =
         service.measurementType === "blood_pressure"
             ? "TA"
-            : service.measurementType === "glucose"
-              ? "glicémia"
-              : service.measurementType === "wound_care"
+            : service.measurementType === "wound_care"
                 ? "ferida"
               : null;
 
@@ -107,9 +109,14 @@ export function NewAppointmentDialog({
     const { closeDialog, open, setOpen, showFormAgain, visibleState } =
         useActionDialog(state, initialState);
     const formRef = useRef<HTMLFormElement>(null);
+    const [selectedServiceId, setSelectedServiceId] = useState("");
     const currentUserEmployee = currentUserEmployeeId
         ? employees.find((employee) => employee.id === currentUserEmployeeId)
         : null;
+    const selectedService = services.find(
+        (service) => service.id === selectedServiceId
+    );
+    const isGlucoseService = selectedService?.measurementType === "glucose";
     const isDisabled = patients.length === 0 || services.length === 0;
     const isSubmitDisabled = isDisabled || (!canManage && !currentUserEmployee);
 
@@ -247,7 +254,8 @@ export function NewAppointmentDialog({
                         <select
                             id="appointment-service"
                             name="service_id"
-                            defaultValue=""
+                            value={selectedServiceId}
+                            onChange={(event) => setSelectedServiceId(event.target.value)}
                             className="h-9 w-full rounded-md border border-input bg-background px-2.5 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                             aria-describedby={
                                 visibleState.fieldErrors?.serviceId
@@ -275,6 +283,37 @@ export function NewAppointmentDialog({
                             </p>
                         ) : null}
                     </div>
+
+                    {isGlucoseService ? (
+                        <div className="grid gap-2 rounded-md border p-3">
+                            <Label>Categoria da glicemia</Label>
+                            <div className="flex flex-wrap gap-3">
+                                <Label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                                    <input
+                                        type="checkbox"
+                                        name="glucose_periods"
+                                        value="fasting"
+                                        className="size-4 rounded border-input accent-foreground"
+                                    />
+                                    Jejum
+                                </Label>
+                                <Label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                                    <input
+                                        type="checkbox"
+                                        name="glucose_periods"
+                                        value="dinner"
+                                        className="size-4 rounded border-input accent-foreground"
+                                    />
+                                    Jantar
+                                </Label>
+                            </div>
+                            {visibleState.fieldErrors?.glucosePeriods ? (
+                                <p className="text-sm text-destructive">
+                                    {visibleState.fieldErrors.glucosePeriods}
+                                </p>
+                            ) : null}
+                        </div>
+                    ) : null}
 
                     <div className="grid gap-2">
                         <Label htmlFor="appointment-date">Data</Label>

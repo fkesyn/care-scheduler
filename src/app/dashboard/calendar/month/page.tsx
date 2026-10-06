@@ -25,7 +25,7 @@ import {
 } from "./month-navigation";
 import { MonthlyScheduleDialog } from "./monthly-schedule-dialog";
 import { PrintMonthButton } from "./print-month-button";
-import { calendarServiceLabel } from "../service-display";
+import { calendarServiceLabel, glucosePeriodLabel } from "../service-display";
 
 type MonthPageProps = {
     searchParams: Promise<{
@@ -66,6 +66,7 @@ type AppointmentRelation<T> = T | T[] | null;
 type Appointment = {
     id: string;
     scheduled_date: string;
+    glucose_period: string | null;
     status: string;
     patients: AppointmentRelation<{
         id: string;
@@ -372,6 +373,7 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                 `
         id,
         scheduled_date,
+        glucose_period,
         status,
         patients!inner (
           id,
@@ -713,6 +715,13 @@ export default async function CalendarMonthPage({ searchParams }: MonthPageProps
                                                                             {calendarServiceLabel(
                                                                                 service?.name
                                                                             )}
+                                                                            {glucosePeriodLabel(
+                                                                                appointment.glucose_period
+                                                                            )
+                                                                                ? ` · ${glucosePeriodLabel(
+                                                                                      appointment.glucose_period
+                                                                                  )}`
+                                                                                : ""}
                                                                         </span>
                                                                     </span>
                                                                 );

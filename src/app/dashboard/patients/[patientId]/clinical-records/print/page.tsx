@@ -20,6 +20,7 @@ type ClinicalRecord = {
     record_type: string;
     blood_pressure_value: string | null;
     heart_rate_value: number | null;
+    glucose_value: number | null;
     wound_characteristics: string | null;
     wound_treatment: string | null;
     services: Relation<{
@@ -30,6 +31,7 @@ type ClinicalRecord = {
     }>;
     appointments: Relation<{
         notes: string | null;
+        glucose_period: string | null;
     }>;
 };
 
@@ -59,7 +61,23 @@ function recordTypeLabel(recordType: string) {
         return "Tratamento de feridas";
     }
 
+    if (recordType === "glucose") {
+        return "Glicemia capilar";
+    }
+
     return "Registo";
+}
+
+function glucosePeriodLabel(period: string | null) {
+    if (period === "fasting") {
+        return "Jejum";
+    }
+
+    if (period === "dinner") {
+        return "Jantar";
+    }
+
+    return null;
 }
 
 export default async function PatientClinicalRecordsPrintPage({
@@ -86,6 +104,7 @@ export default async function PatientClinicalRecordsPrintPage({
                     record_type,
                     blood_pressure_value,
                     heart_rate_value,
+                    glucose_value,
                     wound_characteristics,
                     wound_treatment,
                     services (
@@ -95,7 +114,8 @@ export default async function PatientClinicalRecordsPrintPage({
                       name
                     ),
                     appointments (
-                      notes
+                      notes,
+                      glucose_period
                     )
                   `
                 )
@@ -143,6 +163,9 @@ export default async function PatientClinicalRecordsPrintPage({
                             const service = firstRelation(record.services);
                             const employee = firstRelation(record.employees);
                             const appointment = firstRelation(record.appointments);
+                            const periodLabel = glucosePeriodLabel(
+                                appointment?.glucose_period ?? null
+                            );
 
                             return (
                                 <article
@@ -154,6 +177,11 @@ export default async function PatientClinicalRecordsPrintPage({
                                             <h2 className="font-semibold">
                                                 {recordTypeLabel(record.record_type)}
                                             </h2>
+                                            {periodLabel ? (
+                                                <p className="text-muted-foreground">
+                                                    {periodLabel}
+                                                </p>
+                                            ) : null}
                                             <p className="text-muted-foreground">
                                                 {service?.name ?? "Serviço"} ·{" "}
                                                 {employee?.name ?? "Sem responsável"}
@@ -175,6 +203,15 @@ export default async function PatientClinicalRecordsPrintPage({
                                         <p>
                                             <span className="font-medium">FC:</span>{" "}
                                             {record.heart_rate_value}
+                                        </p>
+                                    ) : null}
+
+                                    {record.glucose_value ? (
+                                        <p>
+                                            <span className="font-medium">
+                                                Glicemia:
+                                            </span>{" "}
+                                            {record.glucose_value}
                                         </p>
                                     ) : null}
 

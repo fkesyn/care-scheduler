@@ -89,7 +89,7 @@ export function NewServiceDialog() {
                         <Input
                             id="service-name"
                             name="name"
-                            placeholder="Ex.: Avaliação de glicémia"
+                            placeholder="Ex.: Glicemia capilar"
                             aria-describedby={
                                 visibleState.fieldErrors?.name
                                     ? "service-name-error"
@@ -144,7 +144,7 @@ export function NewServiceDialog() {
                         >
                             <option value="">Sem medição</option>
                             <option value="blood_pressure">Tensão arterial</option>
-                            <option value="glucose">Glicémia</option>
+                            <option value="glucose">Glicemia capilar</option>
                             <option value="wound_care">Tratamento de feridas</option>
                         </select>
                     </div>

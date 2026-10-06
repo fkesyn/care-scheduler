@@ -29,7 +29,7 @@ function measurementLabel(type: string | null) {
     }
 
     if (type === "glucose") {
-        return "Glicémia";
+        return "Glicemia capilar";
     }
 
     if (type === "wound_care") {

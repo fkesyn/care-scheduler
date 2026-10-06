@@ -90,6 +90,7 @@ type AppointmentClinicalRecord = {
     record_type: string;
     blood_pressure_value: string | null;
     heart_rate_value: number | null;
+    glucose_value: number | null;
     wound_characteristics: string | null;
     wound_treatment: string | null;
 };
@@ -97,6 +98,7 @@ type AppointmentClinicalRecord = {
 type Appointment = {
     id: string;
     scheduled_date: string;
+    glucose_period: string | null;
     status: string;
     notes: string | null;
     employees: AppointmentEmployee | AppointmentEmployee[] | null;
@@ -154,7 +156,7 @@ function measurementLabel(type: string | null | undefined) {
     }
 
     if (type === "glucose") {
-        return "Glicémia";
+        return null;
     }
 
     if (type === "wound_care") {
@@ -313,6 +315,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                 `
           id,
           scheduled_date,
+          glucose_period,
           status,
           notes,
           employees (
@@ -342,6 +345,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             record_type,
             blood_pressure_value,
             heart_rate_value,
+            glucose_value,
             wound_characteristics,
             wound_treatment
           )
@@ -455,6 +459,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             patientName: patient?.name ?? "Utente removido",
             patientNameColor,
             scheduledDate: appointment.scheduled_date,
+            glucosePeriod: appointment.glucose_period,
             serviceId: service?.id ?? null,
             serviceMeasurementType: clinicalRecordType,
             serviceName: calendarServiceLabel(service?.name, "Serviço removido"),
@@ -466,6 +471,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                       recordType: clinicalRecord.record_type,
                       bloodPressureValue: clinicalRecord.blood_pressure_value,
                       heartRateValue: clinicalRecord.heart_rate_value,
+                      glucoseValue: clinicalRecord.glucose_value,
                       woundCharacteristics: clinicalRecord.wound_characteristics,
                       woundTreatment: clinicalRecord.wound_treatment,
                   }

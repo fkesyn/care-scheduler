@@ -31,7 +31,28 @@ export function calendarServiceLabel(
         return "TA";
     }
 
+    if (
+        normalizedName.includes("glicemia") ||
+        normalizedName.includes("glucose")
+    ) {
+        return "Glicemia capilar";
+    }
+
     return name;
+}
+
+export type GlucosePeriod = "fasting" | "dinner";
+
+export function glucosePeriodLabel(period: string | null | undefined) {
+    if (period === "fasting") {
+        return "Jejum";
+    }
+
+    if (period === "dinner") {
+        return "Jantar";
+    }
+
+    return null;
 }
 
 export function clinicalRecordTypeForService(

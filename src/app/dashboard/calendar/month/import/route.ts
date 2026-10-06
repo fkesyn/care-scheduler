@@ -49,6 +49,7 @@ type ExistingAppointment = {
     employee_id: string | null;
     patient_id: string | null;
     service_id: string | null;
+    glucose_period: string | null;
 };
 
 type ImportOperation = "apagar" | "atualizar" | "criar" | "manter";
@@ -61,6 +62,7 @@ type ImportIntent = {
     status: string;
     patientId: string;
     serviceId: string;
+    glucosePeriod: string | null;
     employeeId: string | null;
     notes: string | null;
 };
@@ -429,6 +431,20 @@ function normalizeStatus(value: string) {
     return status;
 }
 
+function normalizeGlucosePeriod(value: string) {
+    const period = normalizeKey(value);
+
+    if (["fasting", "jejum"].includes(period)) {
+        return "fasting";
+    }
+
+    if (["dinner", "jantar"].includes(period)) {
+        return "dinner";
+    }
+
+    return "";
+}
+
 function entityByName<T extends { name: string }>(rows: T[], name: string) {
     const key = normalizeKey(name);
     const matches = rows.filter((row) => normalizeKey(row.name) === key);
@@ -651,7 +667,7 @@ export async function POST(request: Request) {
             ? await supabase
                   .from("appointments")
                   .select(
-                      "id, scheduled_date, status, notes, employee_id, patient_id, service_id"
+                      "id, scheduled_date, status, notes, employee_id, patient_id, service_id, glucose_period"
                   )
                   .eq("organization_id", organizationId)
                   .in("id", appointmentIds)
@@ -724,6 +740,7 @@ export async function POST(request: Request) {
                 rowNumber: row.rowNumber,
                 scheduledDate: existingAppointment?.scheduled_date ?? "",
                 serviceId: existingAppointment?.service_id ?? "",
+                glucosePeriod: existingAppointment?.glucose_period ?? null,
                 status: existingAppointment?.status ?? "planned",
             });
             continue;
@@ -749,6 +766,11 @@ export async function POST(request: Request) {
         const scheduledDate =
             normalizeDate(values.data) || existingAppointment?.scheduled_date || "";
         const status = normalizeStatus(values.estado || existingAppointment?.status || "");
+        const glucosePeriodValue = normalizeText(values.categoria_glicemia);
+        const glucosePeriod =
+            normalizeGlucosePeriod(glucosePeriodValue) ||
+            existingAppointment?.glucose_period ||
+            null;
 
         if (!scheduledDate || !datePattern.test(scheduledDate)) {
             errors.push(`Linha ${row.rowNumber}: data inválida.`);
@@ -793,13 +815,33 @@ export async function POST(request: Request) {
             !selectedPatient?.is_diabetic
         ) {
             errors.push(
-                `Linha ${row.rowNumber}: glicémia só pode ser marcada para utentes diabéticos.`
+                `Linha ${row.rowNumber}: glicemia capilar só pode ser marcada para utentes diabéticos.`
+            );
+        }
+
+        if (selectedService?.measurement_type === "glucose" && !glucosePeriod) {
+            errors.push(
+                `Linha ${row.rowNumber}: categoria_glicemia obrigatória para glicemia capilar. Usa jejum ou jantar.`
+            );
+        }
+
+        if (
+            selectedService?.measurement_type !== "glucose" &&
+            glucosePeriodValue &&
+            !normalizeGlucosePeriod(glucosePeriodValue)
+        ) {
+            errors.push(
+                `Linha ${row.rowNumber}: categoria_glicemia inválida. Usa jejum ou jantar.`
             );
         }
 
         intents.push({
             appointmentId: existingAppointment?.id ?? null,
             employeeId: employee?.id ?? null,
+            glucosePeriod:
+                selectedService?.measurement_type === "glucose"
+                    ? glucosePeriod
+                    : null,
             notes: values.notas || existingAppointment?.notes || null,
             operation,
             patientId,
@@ -814,7 +856,9 @@ export async function POST(request: Request) {
     const createKeys = new Set<string>();
 
     for (const intent of createIntents) {
-        const key = `${intent.scheduledDate}|${intent.patientId}|${intent.serviceId}`;
+        const key = `${intent.scheduledDate}|${intent.patientId}|${intent.serviceId}|${
+            intent.glucosePeriod ?? ""
+        }`;
 
         if (createKeys.has(key)) {
             errors.push(`Linha ${intent.rowNumber}: marcação duplicada no ficheiro.`);
@@ -829,7 +873,7 @@ export async function POST(request: Request) {
     if (createIntents.length > 0) {
         const { data: duplicateAppointments, error: duplicateError } = await supabase
             .from("appointments")
-            .select("scheduled_date, patient_id, service_id")
+            .select("scheduled_date, patient_id, service_id, glucose_period")
             .eq("organization_id", organizationId)
             .in(
                 "scheduled_date",
@@ -858,13 +902,15 @@ export async function POST(request: Request) {
         duplicateDatabaseKeys = new Set(
             (duplicateAppointments ?? []).map(
                 (appointment) =>
-                    `${appointment.scheduled_date}|${appointment.patient_id}|${appointment.service_id}`
+                    `${appointment.scheduled_date}|${appointment.patient_id}|${appointment.service_id}|${appointment.glucose_period ?? ""}`
             )
         );
 
         skippedDuplicateCount = createIntents.filter((intent) =>
             duplicateDatabaseKeys.has(
-                `${intent.scheduledDate}|${intent.patientId}|${intent.serviceId}`
+                `${intent.scheduledDate}|${intent.patientId}|${intent.serviceId}|${
+                    intent.glucosePeriod ?? ""
+                }`
             )
         ).length;
     }
@@ -889,7 +935,9 @@ export async function POST(request: Request) {
     );
     const insertRows = createIntents
         .filter((intent) => {
-            const key = `${intent.scheduledDate}|${intent.patientId}|${intent.serviceId}`;
+            const key = `${intent.scheduledDate}|${intent.patientId}|${intent.serviceId}|${
+                intent.glucosePeriod ?? ""
+            }`;
             return !duplicateDatabaseKeys.has(key);
         })
         .map((intent) => ({
@@ -902,6 +950,7 @@ export async function POST(request: Request) {
             end_time: technicalEndTimeWithSeconds,
             status: intent.status,
             notes: intent.notes,
+            glucose_period: intent.glucosePeriod,
             ...(auditProfileId ? { created_by: auditProfileId } : {}),
         }));
 
@@ -932,6 +981,7 @@ export async function POST(request: Request) {
                 end_time: technicalEndTimeWithSeconds,
                 status: intent.status,
                 notes: intent.notes,
+                glucose_period: intent.glucosePeriod,
                 updated_at: new Date().toISOString(),
                 ...(auditProfileId ? { updated_by: auditProfileId } : {}),
             })

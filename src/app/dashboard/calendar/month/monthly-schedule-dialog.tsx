@@ -86,12 +86,14 @@ function daysInMonth(monthValue: string) {
 }
 
 function serviceLabel(service: ServiceOption) {
+    if (service.measurement_type === "glucose") {
+        return "Glicemia capilar";
+    }
+
     const suffix =
         service.measurement_type === "blood_pressure"
             ? "TA"
-            : service.measurement_type === "glucose"
-              ? "glicémia"
-              : service.measurement_type === "wound_care"
+            : service.measurement_type === "wound_care"
                 ? "ferida"
               : null;
 
@@ -171,6 +173,9 @@ export function MonthlyScheduleDialog({
     const [selectedWeekdays, setSelectedWeekdays] = useState<Set<number>>(
         () => new Set(weekdayValues)
     );
+    const [selectedGlucosePeriods, setSelectedGlucosePeriods] = useState<
+        Set<string>
+    >(() => new Set(["fasting"]));
     const [weekdayCapacities, setWeekdayCapacities] = useState<
         Record<number, string>
     >(weekdayCapacityDefaults);
@@ -211,6 +216,7 @@ export function MonthlyScheduleDialog({
 
     const selectedService = services.find((service) => service.id === serviceId);
     const isNailCareSelected = isNailCareService(selectedService);
+    const isGlucoseSelected = selectedService?.measurement_type === "glucose";
     const selectedCount = visibleSelectedPatientIds.size;
     const selectedPatientsAreDiabetic = filteredPatients
         .filter((patient) => visibleSelectedPatientIds.has(patient.id))
@@ -312,6 +318,20 @@ export function MonthlyScheduleDialog({
                 next.add(weekday);
             } else {
                 next.delete(weekday);
+            }
+
+            return next;
+        });
+    }
+
+    function toggleGlucosePeriod(period: string, checked: boolean) {
+        setSelectedGlucosePeriods((current) => {
+            const next = new Set(current);
+
+            if (checked) {
+                next.add(period);
+            } else {
+                next.delete(period);
             }
 
             return next;
@@ -656,6 +676,55 @@ export function MonthlyScheduleDialog({
                             </div>
                         </div>
 
+                        {isGlucoseSelected ? (
+                            <div className="grid gap-2 rounded-md border p-3">
+                                <Label>Categoria da glicemia</Label>
+                                <div className="flex flex-wrap gap-3">
+                                    <Label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                                        <input
+                                            type="checkbox"
+                                            name="glucose_periods"
+                                            value="fasting"
+                                            checked={selectedGlucosePeriods.has(
+                                                "fasting"
+                                            )}
+                                            onChange={(event) =>
+                                                toggleGlucosePeriod(
+                                                    "fasting",
+                                                    event.target.checked
+                                                )
+                                            }
+                                            className="size-4 rounded border-input accent-foreground"
+                                        />
+                                        Jejum
+                                    </Label>
+                                    <Label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                                        <input
+                                            type="checkbox"
+                                            name="glucose_periods"
+                                            value="dinner"
+                                            checked={selectedGlucosePeriods.has(
+                                                "dinner"
+                                            )}
+                                            onChange={(event) =>
+                                                toggleGlucosePeriod(
+                                                    "dinner",
+                                                    event.target.checked
+                                                )
+                                            }
+                                            className="size-4 rounded border-input accent-foreground"
+                                        />
+                                        Jantar
+                                    </Label>
+                                </div>
+                                {visibleState.fieldErrors?.glucosePeriods ? (
+                                    <p className="text-sm text-destructive">
+                                        {visibleState.fieldErrors.glucosePeriods}
+                                    </p>
+                                ) : null}
+                            </div>
+                        ) : null}
+
                         <div className="grid gap-4">
                             <div className="grid gap-2">
                                 <Label htmlFor="monthly-employee">Funcionário</Label>
@@ -807,7 +876,9 @@ export function MonthlyScheduleDialog({
                                 disabled={
                                     isDisabled ||
                                     selectedCount === 0 ||
-                                    selectedWeekdays.size === 0
+                                    selectedWeekdays.size === 0 ||
+                                    (isGlucoseSelected &&
+                                        selectedGlucosePeriods.size === 0)
                                 }
                             />
                         </DialogFooter>
