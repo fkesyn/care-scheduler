@@ -275,14 +275,16 @@ function parseGlucosePeriods(formData: FormData) {
         .getAll("glucose_periods")
         .map((value) => String(value).trim())
         .filter((value): value is GlucosePeriod =>
-            value === "fasting" || value === "dinner"
+            value === "fasting" || value === "lunch" || value === "dinner"
         );
 
     return Array.from(new Set(periods));
 }
 
 function parseSingleGlucosePeriod(value: string) {
-    return value === "fasting" || value === "dinner" ? value : null;
+    return value === "fasting" || value === "lunch" || value === "dinner"
+        ? value
+        : null;
 }
 
 function normalizeLocationName(value: string) {
@@ -468,7 +470,7 @@ export async function createAppointment(
             status: "error",
             message: "Escolhe pelo menos uma categoria de glicemia.",
             fieldErrors: {
-                glucosePeriods: "Escolhe jejum, jantar ou ambos.",
+                glucosePeriods: "Escolhe jejum, almoço e/ou jantar.",
             },
         };
     }
@@ -732,7 +734,7 @@ export async function updateAppointmentDetails(
             status: "error",
             message: "Escolhe uma categoria de glicemia.",
             fieldErrors: {
-                glucosePeriod: "Escolhe jejum ou jantar.",
+                glucosePeriod: "Escolhe jejum, almoço ou jantar.",
             },
         };
     }
@@ -1394,7 +1396,7 @@ export async function createMonthlyAppointments(
             status: "error",
             message: "Escolhe pelo menos uma categoria de glicemia.",
             fieldErrors: {
-                glucosePeriods: "Escolhe jejum, jantar ou ambos.",
+                glucosePeriods: "Escolhe jejum, almoço e/ou jantar.",
             },
         };
     }
@@ -1564,6 +1566,7 @@ export async function createMonthlyAppointments(
     const appointmentsNeeded: Array<{
         patient: PatientRow;
         glucosePeriod: GlucosePeriod | null;
+        scheduledDate?: string;
     }> = [];
 
     for (const patient of patientRows) {
@@ -1575,19 +1578,34 @@ export async function createMonthlyAppointments(
             const sameServiceDates = existingSameServiceByPatient.get(
                 `${patient.id}:${periodKey}`
             );
-            const alreadyHasSameService = Array.from(sameServiceDates ?? []).some(
-                (dateValue) => allowedDateSet.has(dateValue)
-            );
+            if (monthlyClinicalRecordType === "glucose") {
+                for (const dateValue of allowedDateOrder) {
+                    if (sameServiceDates?.has(dateValue)) {
+                        skippedDuplicateCount += 1;
+                        continue;
+                    }
 
-            if (alreadyHasSameService) {
-                skippedDuplicateCount += 1;
-                continue;
+                    appointmentsNeeded.push({
+                        patient,
+                        glucosePeriod,
+                        scheduledDate: dateValue,
+                    });
+                }
+            } else {
+                const alreadyHasSameService = Array.from(
+                    sameServiceDates ?? []
+                ).some((dateValue) => allowedDateSet.has(dateValue));
+
+                if (alreadyHasSameService) {
+                    skippedDuplicateCount += 1;
+                    continue;
+                }
+
+                appointmentsNeeded.push({
+                    patient,
+                    glucosePeriod,
+                });
             }
-
-            appointmentsNeeded.push({
-                patient,
-                glucosePeriod,
-            });
         }
     }
 
@@ -1622,6 +1640,7 @@ export async function createMonthlyAppointments(
         appointment: {
             patient: PatientRow;
             glucosePeriod: GlucosePeriod | null;
+            scheduledDate?: string;
         },
         dateValue: string
     ) {
@@ -1653,9 +1672,25 @@ export async function createMonthlyAppointments(
     const appointmentsForFallback: Array<{
         patient: PatientRow;
         glucosePeriod: GlucosePeriod | null;
+        scheduledDate?: string;
     }> = [];
 
     for (const appointment of appointmentsNeeded) {
+        if (appointment.scheduledDate) {
+            if (!tryCreateAppointmentForDate(appointment, appointment.scheduledDate)) {
+                const periodLabel = glucosePeriodLabel(appointment.glucosePeriod);
+
+                return {
+                    status: "error",
+                    message: `Não há capacidade diária para ${appointment.patient.name}${
+                        periodLabel ? ` (${periodLabel})` : ""
+                    } em ${appointment.scheduledDate}. Aumenta os utentes por dia. Nada foi criado.`,
+                };
+            }
+
+            continue;
+        }
+
         const existingDates = Array.from(
             existingDatesByPatient.get(appointment.patient.id) ?? []
         )

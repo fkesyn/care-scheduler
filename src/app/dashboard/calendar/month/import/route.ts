@@ -442,6 +442,10 @@ function normalizeGlucosePeriod(value: string) {
         return "dinner";
     }
 
+    if (["lunch", "almoco"].includes(period)) {
+        return "lunch";
+    }
+
     return "";
 }
 
@@ -821,7 +825,7 @@ export async function POST(request: Request) {
 
         if (selectedService?.measurement_type === "glucose" && !glucosePeriod) {
             errors.push(
-                `Linha ${row.rowNumber}: categoria_glicemia obrigatória para glicemia capilar. Usa jejum ou jantar.`
+                `Linha ${row.rowNumber}: categoria_glicemia obrigatória para glicemia capilar. Usa jejum, almoço ou jantar.`
             );
         }
 
@@ -831,7 +835,7 @@ export async function POST(request: Request) {
             !normalizeGlucosePeriod(glucosePeriodValue)
         ) {
             errors.push(
-                `Linha ${row.rowNumber}: categoria_glicemia inválida. Usa jejum ou jantar.`
+                `Linha ${row.rowNumber}: categoria_glicemia inválida. Usa jejum, almoço ou jantar.`
             );
         }
 

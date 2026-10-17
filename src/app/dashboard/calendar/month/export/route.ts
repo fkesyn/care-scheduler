@@ -145,6 +145,10 @@ function glucosePeriodExportLabel(period: string | null | undefined) {
         return "jantar";
     }
 
+    if (period === "lunch") {
+        return "almoço";
+    }
+
     return "";
 }
 

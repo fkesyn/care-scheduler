@@ -476,7 +476,11 @@ export function MonthlyScheduleDialog({
                         </div>
 
                         <div className="relative grid gap-2">
-                            <Label>Dias da semana</Label>
+                            <Label>
+                                {isGlucoseSelected
+                                    ? "Dias semanais da glicemia"
+                                    : "Dias da semana"}
+                            </Label>
                             <Button
                                 type="button"
                                 variant="outline"
@@ -600,6 +604,12 @@ export function MonthlyScheduleDialog({
                                     {visibleState.fieldErrors.weekdayCapacity}
                                 </p>
                             ) : null}
+                            {isGlucoseSelected ? (
+                                <p className="text-xs text-muted-foreground">
+                                    A glicemia será marcada para cada utente em todas as
+                                    ocorrências destes dias durante o intervalo escolhido.
+                                </p>
+                            ) : null}
                         </div>
 
                         <div className="grid gap-4 sm:grid-cols-2">
@@ -680,6 +690,24 @@ export function MonthlyScheduleDialog({
                             <div className="grid gap-2 rounded-md border p-3">
                                 <Label>Categoria da glicemia</Label>
                                 <div className="flex flex-wrap gap-3">
+                                    <Label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                                        <input
+                                            type="checkbox"
+                                            name="glucose_periods"
+                                            value="lunch"
+                                            checked={selectedGlucosePeriods.has(
+                                                "lunch"
+                                            )}
+                                            onChange={(event) =>
+                                                toggleGlucosePeriod(
+                                                    "lunch",
+                                                    event.target.checked
+                                                )
+                                            }
+                                            className="size-4 rounded border-input accent-foreground"
+                                        />
+                                        Almoço
+                                    </Label>
                                     <Label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
                                         <input
                                             type="checkbox"

@@ -67,6 +67,10 @@ function glucosePeriodLabel(period: string | null) {
         return "Jantar";
     }
 
+    if (period === "lunch") {
+        return "Almoço";
+    }
+
     return null;
 }
 

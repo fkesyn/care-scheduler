@@ -817,6 +817,7 @@ export function AppointmentDetailsDialog({
                                                     Escolher categoria
                                                 </option>
                                                 <option value="fasting">Jejum</option>
+                                                <option value="lunch">Almoço</option>
                                                 <option value="dinner">Jantar</option>
                                             </select>
                                             {visibleState.fieldErrors

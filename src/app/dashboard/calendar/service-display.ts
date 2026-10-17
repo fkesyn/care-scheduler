@@ -41,7 +41,7 @@ export function calendarServiceLabel(
     return name;
 }
 
-export type GlucosePeriod = "fasting" | "dinner";
+export type GlucosePeriod = "fasting" | "lunch" | "dinner";
 
 export function glucosePeriodLabel(period: string | null | undefined) {
     if (period === "fasting") {
@@ -50,6 +50,10 @@ export function glucosePeriodLabel(period: string | null | undefined) {
 
     if (period === "dinner") {
         return "Jantar";
+    }
+
+    if (period === "lunch") {
+        return "Almoço";
     }
 
     return null;

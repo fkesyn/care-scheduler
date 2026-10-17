@@ -292,6 +292,15 @@ export function NewAppointmentDialog({
                                     <input
                                         type="checkbox"
                                         name="glucose_periods"
+                                        value="lunch"
+                                        className="size-4 rounded border-input accent-foreground"
+                                    />
+                                    Almoço
+                                </Label>
+                                <Label className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                                    <input
+                                        type="checkbox"
+                                        name="glucose_periods"
                                         value="fasting"
                                         className="size-4 rounded border-input accent-foreground"
                                     />
