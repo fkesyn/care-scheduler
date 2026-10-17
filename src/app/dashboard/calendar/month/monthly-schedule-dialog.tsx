@@ -111,12 +111,18 @@ function isNailCareService(service: ServiceOption | undefined) {
     return service ? normalizeText(service.name).includes("unha") : false;
 }
 
+function serviceRequiresDiabeticPatients(service: ServiceOption | undefined) {
+    return (
+        service?.measurement_type === "glucose" || isNailCareService(service)
+    );
+}
+
 function patientIdsForService(
     patientOptions: PatientOption[],
     locationId: string,
     service: ServiceOption | undefined
 ) {
-    const shouldSelectDiabeticPatients = isNailCareService(service);
+    const shouldSelectDiabeticPatients = serviceRequiresDiabeticPatients(service);
 
     return new Set(
         patientOptions
@@ -181,7 +187,10 @@ export function MonthlyScheduleDialog({
     >(weekdayCapacityDefaults);
     const [patientsOpen, setPatientsOpen] = useState(false);
     const [allPatients, setAllPatients] = useState(
-        () => !isNailCareService(services.find((service) => service.id === defaultServiceId))
+        () =>
+            !serviceRequiresDiabeticPatients(
+                services.find((service) => service.id === defaultServiceId)
+            )
     );
     const [selectedPatientIds, setSelectedPatientIds] = useState<Set<string>>(
         () =>
@@ -193,13 +202,24 @@ export function MonthlyScheduleDialog({
     );
 
     const monthDays = daysInMonth(monthValue);
+    const selectedService = services.find((service) => service.id === serviceId);
+    const isGlucoseSelected = selectedService?.measurement_type === "glucose";
+    const requiresDiabeticPatients = serviceRequiresDiabeticPatients(selectedService);
 
     const filteredPatients = useMemo(
         () =>
-            patients.filter((patient) => patient.location_id === locationId).sort((a, b) =>
-                a.name.localeCompare(b.name, "pt-PT", { sensitivity: "base" })
-            ),
-        [locationId, patients]
+            patients
+                .filter((patient) => patient.location_id === locationId)
+                .filter(
+                    (patient) =>
+                        !requiresDiabeticPatients || Boolean(patient.is_diabetic)
+                )
+                .sort((a, b) =>
+                    a.name.localeCompare(b.name, "pt-PT", {
+                        sensitivity: "base",
+                    })
+                ),
+        [locationId, patients, requiresDiabeticPatients]
     );
 
     const visibleSelectedPatientIds = useMemo(() => {
@@ -214,9 +234,6 @@ export function MonthlyScheduleDialog({
         );
     }, [allPatients, filteredPatients, selectedPatientIds]);
 
-    const selectedService = services.find((service) => service.id === serviceId);
-    const isNailCareSelected = isNailCareService(selectedService);
-    const isGlucoseSelected = selectedService?.measurement_type === "glucose";
     const selectedCount = visibleSelectedPatientIds.size;
     const selectedPatientsAreDiabetic = filteredPatients
         .filter((patient) => visibleSelectedPatientIds.has(patient.id))
@@ -269,7 +286,9 @@ export function MonthlyScheduleDialog({
         );
 
         setLocationId(nextLocationId);
-        setAllPatients(!isNailCareService(selectedServiceForLocation));
+        setAllPatients(
+            !serviceRequiresDiabeticPatients(selectedServiceForLocation)
+        );
         setSelectedPatientIds(ids);
         setPatientsOpen(false);
     }
@@ -279,7 +298,7 @@ export function MonthlyScheduleDialog({
         const ids = patientIdsForService(patients, locationId, nextService);
 
         setServiceId(nextServiceId);
-        setAllPatients(!isNailCareService(nextService));
+        setAllPatients(!serviceRequiresDiabeticPatients(nextService));
         setSelectedPatientIds(ids);
         setPatientsOpen(false);
     }
@@ -802,7 +821,8 @@ export function MonthlyScheduleDialog({
                                 <span>
                                     {allPatients
                                         ? `Todos (${filteredPatients.length})`
-                                        : isNailCareSelected && selectedPatientsAreDiabetic
+                                        : requiresDiabeticPatients &&
+                                            selectedPatientsAreDiabetic
                                           ? `${selectedCount} diabéticos selecionados`
                                         : `${selectedCount} selecionados`}
                                 </span>
@@ -833,14 +853,18 @@ export function MonthlyScheduleDialog({
                                             }
                                             className="size-4 rounded border-input accent-foreground"
                                         />
-                                        Todos
+                                        {requiresDiabeticPatients
+                                            ? "Todos os diabéticos"
+                                            : "Todos"}
                                     </Label>
 
                                     <div className="h-px bg-border" />
 
                                     {filteredPatients.length === 0 ? (
                                         <p className="px-2 py-1.5 text-muted-foreground">
-                                            Não há utentes ativos neste local.
+                                            {requiresDiabeticPatients
+                                                ? "Não há utentes diabéticos ativos neste local."
+                                                : "Não há utentes ativos neste local."}
                                         </p>
                                     ) : (
                                         filteredPatients.map((patient) => (
