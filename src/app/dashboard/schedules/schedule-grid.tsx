@@ -1,13 +1,13 @@
 "use client";
 
-import { AlertTriangleIcon, GripVerticalIcon, SaveIcon } from "lucide-react";
+import { AlertTriangleIcon, GripVerticalIcon } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
 import {
     clearScheduleEntry,
     reorderScheduleEmployees,
-    updateScheduleEmployeeFfDays,
     upsertScheduleEntry,
 } from "@/app/dashboard/schedules/actions";
 import { Badge } from "@/components/ui/badge";
@@ -74,7 +74,6 @@ type CellEvaluation = {
 };
 
 const dayOffCodes = new Set(["F", "FF", "Fe", "B", "FA"]);
-const ffBalanceNonWorkCodes = new Set(["F", "FF", "Fe", "B", "FA"]);
 
 function buildCellKey(employeeId: string, dateValue: string) {
     return `${employeeId}:${dateValue}`;
@@ -83,40 +82,6 @@ function buildCellKey(employeeId: string, dateValue: string) {
 function compactEmployeeName(name: string) {
     const normalizedName = name.replace(/^enf\.?\s*/i, "").trim();
     return normalizedName.split(/\s+/)[0] ?? normalizedName;
-}
-
-function coerceFfDayValue(value: string) {
-    const normalizedValue = value.trim() === "" ? "0" : value;
-    const parsedValue = Number(normalizedValue);
-
-    if (!Number.isFinite(parsedValue)) {
-        return 0;
-    }
-
-    return Math.trunc(parsedValue);
-}
-
-function clampFfDayValue(value: number) {
-    return Math.min(999, Math.max(0, value));
-}
-
-function isWorkShiftForFfBalance(shiftType: ScheduleGridShiftType | null) {
-    return Boolean(shiftType && !ffBalanceNonWorkCodes.has(shiftType.code));
-}
-
-function ffBalanceImpactForCell(
-    day: ScheduleGridDay,
-    shiftType: ScheduleGridShiftType | null
-) {
-    if (shiftType?.code === "FF") {
-        return -1;
-    }
-
-    if (day.isHoliday && isWorkShiftForFfBalance(shiftType)) {
-        return day.isWeekend ? 2 : 1;
-    }
-
-    return 0;
 }
 
 function constraintTypeLabel(constraintType: string) {
@@ -304,14 +269,6 @@ export function ScheduleGrid({
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [savingCellKey, setSavingCellKey] = useState<string | null>(null);
     const [localValues, setLocalValues] = useState<Record<string, string>>({});
-    const [ffDayValues, setFfDayValues] = useState<Record<string, string>>(() =>
-        Object.fromEntries(
-            employees.map((employee) => [employee.id, String(employee.ffDays ?? 0)])
-        )
-    );
-    const [savingFfEmployeeId, setSavingFfEmployeeId] = useState<string | null>(
-        null
-    );
     const [employeeOrder, setEmployeeOrder] = useState<string[]>(() =>
         employees.map((employee) => employee.id)
     );
@@ -372,106 +329,28 @@ export function ScheduleGrid({
     const gridMinimumWidthRem = 7 + days.length * 1.55;
 
     function mutateCell(
-        day: ScheduleGridDay,
         cellKey: string,
         employeeId: string,
         workDate: string,
         nextShiftTypeId: string,
         previousShiftTypeId: string
     ) {
-        if (!canManage) {
-            return;
-        }
-
+        if (!canManage) return;
         setSavingCellKey(cellKey);
         setErrorMessage(null);
-        const previousFfValue =
-            ffDayValues[employeeId] ??
-            String(employeesById.get(employeeId)?.ffDays ?? 0);
-        const previousShiftType = previousShiftTypeId
-            ? shiftTypesById.get(previousShiftTypeId) ?? null
-            : null;
-        const nextShiftType = nextShiftTypeId
-            ? shiftTypesById.get(nextShiftTypeId) ?? null
-            : null;
-        const ffDelta =
-            ffBalanceImpactForCell(day, nextShiftType) -
-            ffBalanceImpactForCell(day, previousShiftType);
-        const nextFfValue = clampFfDayValue(
-            coerceFfDayValue(previousFfValue) + ffDelta
-        );
-        const nextFfValueText = String(nextFfValue);
-
-        setLocalValues((current) => ({
-            ...current,
-            [cellKey]: nextShiftTypeId,
-        }));
-
-        if (ffDelta !== 0) {
-            setFfDayValues((current) => ({
-                ...current,
-                [employeeId]: nextFfValueText,
-            }));
-            setSavingFfEmployeeId(employeeId);
-        }
-
+        setLocalValues(current => ({ ...current, [cellKey]: nextShiftTypeId }));
         startTransition(() => {
             void (async () => {
                 const result = nextShiftTypeId
-                    ? await upsertScheduleEntry({
-                          employeeId,
-                          scheduleId,
-                          shiftTypeId: nextShiftTypeId,
-                          workDate,
-                      })
-                    : await clearScheduleEntry({
-                          employeeId,
-                          scheduleId,
-                          workDate,
-                      });
-
+                    ? await upsertScheduleEntry({ employeeId, scheduleId, shiftTypeId: nextShiftTypeId, workDate })
+                    : await clearScheduleEntry({ employeeId, scheduleId, workDate });
                 if (result.status === "error") {
-                    setLocalValues((current) => ({
-                        ...current,
-                        [cellKey]: previousShiftTypeId,
-                    }));
-                    if (ffDelta !== 0) {
-                        setFfDayValues((current) => ({
-                            ...current,
-                            [employeeId]: previousFfValue,
-                        }));
-                    }
+                    setLocalValues(current => ({ ...current, [cellKey]: previousShiftTypeId }));
                     setErrorMessage(result.message ?? "Não consegui guardar a célula.");
                 } else {
-                    if (ffDelta !== 0) {
-                        const ffResult = await updateScheduleEmployeeFfDays({
-                            employeeId,
-                            ffDays: nextFfValue,
-                            scheduleId,
-                        });
-
-                        if (ffResult.status === "error") {
-                            setFfDayValues((current) => ({
-                                ...current,
-                                [employeeId]: previousFfValue,
-                            }));
-                            setErrorMessage(
-                                ffResult.message ??
-                                    "Célula guardada, mas não consegui guardar os FF."
-                            );
-                            setSavingCellKey(null);
-                            setSavingFfEmployeeId(null);
-                            return;
-                        }
-                    }
-
                     router.refresh();
                 }
-
                 setSavingCellKey(null);
-                if (ffDelta !== 0) {
-                    setSavingFfEmployeeId(null);
-                }
             })();
         });
     }
@@ -526,59 +405,13 @@ export function ScheduleGrid({
         });
     }
 
-    function saveEmployeeFfDays(employeeId: string) {
-        if (!canManage) {
-            return;
-        }
-
-        const employee = employeesById.get(employeeId);
-        const rawValue = ffDayValues[employeeId] ?? "0";
-        const normalizedValue = rawValue.trim() === "" ? "0" : rawValue;
-        const nextValue = Number(normalizedValue);
-
-        if (!Number.isInteger(nextValue) || nextValue < 0 || nextValue > 999) {
-            setErrorMessage("O valor de FF tem de ser um número entre 0 e 999.");
-            return;
-        }
-
-        setSavingFfEmployeeId(employeeId);
-        setErrorMessage(null);
-
-        startTransition(() => {
-            void (async () => {
-                const result = await updateScheduleEmployeeFfDays({
-                    employeeId,
-                    ffDays: nextValue,
-                    scheduleId,
-                });
-
-                if (result.status === "error") {
-                    setErrorMessage(
-                        result.message ??
-                            `Não consegui guardar FF de ${
-                                employee?.name ?? "este funcionário"
-                            }.`
-                    );
-                } else {
-                    setFfDayValues((current) => ({
-                        ...current,
-                        [employeeId]: String(nextValue),
-                    }));
-                    router.refresh();
-                }
-
-                setSavingFfEmployeeId(null);
-            })();
-        });
-    }
-
     return (
         <section className="overflow-hidden rounded-lg border bg-card shadow-xs">
             <div className="flex flex-col gap-1 border-b p-4">
                 <h2 className="text-base font-semibold">Grelha mensal</h2>
                 <p className="text-sm text-muted-foreground">
                     {canManage
-                        ? "Clica numa célula para escolher turno ou limpar com “-”."
+                        ? "Clica numa célula para escolher turno ou limpar com “-”. Os feriados e descontos FF só são contabilizados ao validar."
                         : "Modo consulta: a grelha está bloqueada para edição."}
                 </p>
                 {errorMessage ? (
@@ -716,66 +549,9 @@ export function ScheduleGrid({
                                                     <span className="rounded-sm border bg-muted px-1 py-0.5 font-mono text-[9px] font-semibold leading-none text-muted-foreground">
                                                         FF
                                                     </span>
-                                                    <input
-                                                        aria-label={`FF de ${employee.name}`}
-                                                        className="h-5 w-8 rounded-sm border border-input bg-background px-1 text-center text-[10px] font-medium outline-none [appearance:textfield] focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-70 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                                                        disabled={
-                                                            !canManage ||
-                                                            savingFfEmployeeId ===
-                                                                employee.id ||
-                                                            Boolean(savingCellKey)
-                                                        }
-                                                        inputMode="numeric"
-                                                        min={0}
-                                                        max={999}
-                                                        step={1}
-                                                        type="number"
-                                                        value={
-                                                            ffDayValues[employee.id] ??
-                                                            String(employee.ffDays ?? 0)
-                                                        }
-                                                        onChange={(event) => {
-                                                            setFfDayValues((current) => ({
-                                                                ...current,
-                                                                [employee.id]:
-                                                                    event.target.value,
-                                                            }));
-                                                        }}
-                                                        onKeyDown={(event) => {
-                                                            if (event.key === "Enter") {
-                                                                event.preventDefault();
-                                                                saveEmployeeFfDays(
-                                                                    employee.id
-                                                                );
-                                                            }
-                                                        }}
-                                                    />
-                                                    {canManage ? (
-                                                        <button
-                                                            type="button"
-                                                            aria-label={`Guardar FF de ${employee.name}`}
-                                                            className="inline-flex size-5 items-center justify-center rounded-sm border bg-background text-muted-foreground shadow-xs hover:bg-muted disabled:cursor-wait disabled:opacity-60"
-                                                            disabled={
-                                                                savingFfEmployeeId ===
-                                                                employee.id
-                                                            }
-                                                            onClick={() =>
-                                                                saveEmployeeFfDays(
-                                                                    employee.id
-                                                                )
-                                                            }
-                                                        >
-                                                            {savingFfEmployeeId ===
-                                                            employee.id ? (
-                                                                <Spinner className="size-3" />
-                                                            ) : (
-                                                                <SaveIcon
-                                                                    className="size-3"
-                                                                    aria-hidden="true"
-                                                                />
-                                                            )}
-                                                        </button>
-                                                    ) : null}
+                                                    <Link className="text-xs underline" href={`/dashboard/holidays?employee=${employee.id}`} title="Gerir feriados disponíveis">
+                                                        {employee.ffDays ?? 0}
+                                                    </Link>
                                                 </div>
                                             </div>
                                         </div>
@@ -843,7 +619,6 @@ export function ScheduleGrid({
                                                     value={selectedShiftTypeId}
                                                     onChange={(event) => {
                                                         mutateCell(
-                                                            day,
                                                             cellKey,
                                                             employee.id,
                                                             day.dateValue,

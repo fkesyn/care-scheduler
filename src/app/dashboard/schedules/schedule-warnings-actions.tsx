@@ -71,6 +71,7 @@ export function ScheduleWarningsActions({
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div className="grid gap-1">
                     <h2 className="text-sm font-medium">Validação do horário</h2>
+                    <p className="text-xs text-muted-foreground">Ao validar, os feriados trabalhados são creditados e os dias FF são descontados. Revalidar atualiza a contabilização sem duplicar dias.</p>
                     <p className="text-xs text-muted-foreground">
                         {warningsCount === 0
                             ? "Sem avisos guardados neste momento."

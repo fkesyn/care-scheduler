@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 
 const items = [
+    { href: "/dashboard/holidays", label: "Feriados", icon: CalendarDaysIcon },
     {
         href: "/dashboard/locations",
         label: "Locais",

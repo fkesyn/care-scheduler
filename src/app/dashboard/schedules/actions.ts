@@ -12,6 +12,7 @@ import {
     getHolidaysForDateRange,
 } from "@/lib/holidays/get-holiday-for-date";
 import { buildStaticPortugueseHolidays } from "@/lib/holidays/static-portuguese-holidays";
+import { mergeYearHolidays } from "@/lib/holidays/year-holidays";
 import { syncPortugueseHolidays } from "@/lib/holidays/sync-portuguese-holidays";
 import { createClient } from "@/lib/supabase/server";
 
@@ -133,11 +134,6 @@ export type ReorderScheduleEmployeesInput = {
     employeeIds: string[];
 };
 
-export type UpdateScheduleEmployeeFfDaysInput = {
-    scheduleId: string;
-    employeeId: string;
-    ffDays: number | string;
-};
 
 const monthPattern = /^\d{4}-\d{2}$/;
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -2648,89 +2644,6 @@ export async function reorderScheduleEmployees(
     return {
         status: "success",
         message: "Ordem atualizada.",
-    };
-}
-
-export async function updateScheduleEmployeeFfDays(
-    input: UpdateScheduleEmployeeFfDaysInput
-): Promise<ScheduleEntryActionState> {
-    const scheduleId = String(input.scheduleId ?? "").trim();
-    const employeeId = String(input.employeeId ?? "").trim();
-    const ffDays = Number(input.ffDays);
-
-    if (!uuidPattern.test(scheduleId) || !uuidPattern.test(employeeId)) {
-        return {
-            status: "error",
-            message: "Horário ou funcionário inválido.",
-        };
-    }
-
-    if (!Number.isInteger(ffDays) || ffDays < 0 || ffDays > 999) {
-        return {
-            status: "error",
-            message: "O valor de FF tem de ser um número entre 0 e 999.",
-        };
-    }
-
-    const context = await getAuthenticatedContext();
-
-    if (context.error) {
-        return {
-            status: "error",
-            message: context.error,
-        };
-    }
-
-    const schedule = await getConstraintScheduleContext(context.supabase, scheduleId);
-
-    if (!schedule || schedule.organization_id !== context.organizationId) {
-        return {
-            status: "error",
-            message: "Horário inválido.",
-        };
-    }
-
-    const employeeIsValid = await validateEmployeeForConstraint(
-        context.supabase,
-        employeeId,
-        schedule.organization_id
-    );
-
-    if (!employeeIsValid) {
-        return {
-            status: "error",
-            message: "Funcionário inválido para este horário.",
-        };
-    }
-
-    const { error } = await context.supabase
-        .from("employee_ff_balances")
-        .upsert(
-            {
-                employee_id: employeeId,
-                ff_days: ffDays,
-                organization_id: schedule.organization_id,
-            },
-            {
-                onConflict: "organization_id,employee_id",
-            }
-        )
-        .select("id")
-        .single();
-
-    if (error) {
-        return {
-            status: "error",
-            message: `Não consegui guardar os FF: ${error.message}`,
-        };
-    }
-
-    revalidatePath(`/dashboard/schedules/${schedule.id}`);
-    revalidatePath(`/dashboard/schedules/${schedule.id}/print`);
-
-    return {
-        status: "success",
-        message: "FF guardado.",
     };
 }
 
@@ -5721,12 +5634,28 @@ export async function validateScheduleWarnings(
         };
     }
 
+    const year = Number(schedule.month.slice(0, 4));
+    const { data: holidayRows, error: holidayError } = await context.supabase
+        .from("public_holidays")
+        .select("holiday_date, name, country_code, region")
+        .eq("country_code", "PT")
+        .gte("holiday_date", `${year}-01-01`)
+        .lte("holiday_date", `${year}-12-31`);
+    if (holidayError) return { status: "error", message: `Não consegui ler os feriados: ${holidayError.message}` };
+    const { error: accountingError } = await context.supabase.rpc("validate_schedule_holidays", {
+        p_schedule: schedule.id,
+        p_holidays: mergeYearHolidays(year, holidayRows ?? []),
+    });
+    if (accountingError) return { status: "error", message: `Não consegui contabilizar os feriados: ${accountingError.message}`, warningsCount: warningsResult.count };
+    revalidatePath("/dashboard/holidays");
+    revalidatePath("/dashboard/schedules", "layout");
+
     return {
         status: "success",
         message:
             warningsResult.count > 0
-                ? `Validação concluída com ${warningsResult.count} aviso(s).`
-                : "Validação concluída sem avisos.",
+                ? `Validação concluída com ${warningsResult.count} aviso(s). Feriados e descontos FF contabilizados.`
+                : "Validação concluída sem avisos. Feriados e descontos FF contabilizados.",
         warningsCount: warningsResult.count,
     };
 }

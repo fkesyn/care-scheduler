@@ -95,6 +95,7 @@ export function buildStaticPortugueseHolidays(year: number): StaticHoliday[] {
     ];
     const easterSunday = easterSundayUtc(year);
     const nationalMovable: StaticHoliday[] = [
+        { holiday_date: formatDateValue(easterSunday), name: "Domingo de Páscoa", country_code: "PT", region: null },
         {
             holiday_date: formatDateValue(addDaysUtc(easterSunday, -2)),
             name: "Sexta-feira Santa",
