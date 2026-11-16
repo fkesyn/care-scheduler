@@ -4,6 +4,7 @@ import {
     BriefcaseMedicalIcon,
     CalendarClockIcon,
     CalendarDaysIcon,
+    TreePalmIcon,
     ClipboardListIcon,
     MapPinIcon,
     type LucideIcon,
@@ -47,6 +48,11 @@ const items = [
         activeRoot: "/dashboard/calendar",
         label: "Calendário",
         icon: CalendarDaysIcon,
+    },
+    {
+        href: "/dashboard/vacations",
+        label: "Férias",
+        icon: TreePalmIcon,
     },
 ];
 
