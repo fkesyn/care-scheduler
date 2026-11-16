@@ -37,7 +37,7 @@ create table if not exists public.vacation_requests (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint vacation_requests_year_check check (year >= 2027),
-  constraint vacation_requests_status_check check (status in ('pending', 'approved', 'rejected'))
+  constraint vacation_requests_status_check check (status in ('pending', 'approved', 'rejected', 'canceled'))
 );
 
 create table if not exists public.vacation_request_days (
@@ -262,17 +262,6 @@ begin
     select 1
     from public.vacation_request_days request_day
     join public.vacation_requests request on request.id = request_day.request_id
-    where request.organization_id = current_organization_id
-      and request.status = 'approved'
-      and request_day.vacation_date = any(p_dates)
-  ) then
-    raise exception 'One or more selected days are unavailable';
-  end if;
-
-  if exists (
-    select 1
-    from public.vacation_request_days request_day
-    join public.vacation_requests request on request.id = request_day.request_id
     where request.employee_id = current_employee_id
       and request.status in ('pending', 'approved')
       and request_day.vacation_date = any(p_dates)
@@ -406,20 +395,6 @@ begin
       )
     );
 
-    if exists (
-      select 1
-      from public.vacation_request_days target_day
-      join public.vacation_request_days approved_day
-        on approved_day.vacation_date = target_day.vacation_date
-      join public.vacation_requests approved_request
-        on approved_request.id = approved_day.request_id
-      where target_day.request_id = p_request_id
-        and approved_request.organization_id = current_organization_id
-        and approved_request.status = 'approved'
-    ) then
-      raise exception 'One or more days were already approved for another employee';
-    end if;
-
     select coalesce(custom_allowance.total_days, 22)
     into allowance
     from (select 1) seed
@@ -456,7 +431,8 @@ $review_vacation_request$;
 grant execute on function public.review_vacation_request(uuid, text, text) to authenticated;
 
 create or replace function public.delete_approved_vacation_request(
-  p_request_id uuid
+  p_request_id uuid,
+  p_comment text default null
 )
 returns void
 language plpgsql
@@ -468,7 +444,17 @@ begin
     raise exception 'Admin access required';
   end if;
 
-  delete from public.vacation_requests request
+  update public.vacation_requests request
+  set status = 'canceled',
+      reviewed_by = auth.uid(),
+      reviewed_by_name = coalesce(
+        (select coalesce(nullif(profile.full_name, ''), profile.email)
+         from public.profiles profile where profile.id = auth.uid()),
+        auth.jwt()->>'email',
+        'Admin'
+      ),
+      reviewed_at = now(),
+      rejection_reason = nullif(trim(p_comment), '')
   where request.id = p_request_id
     and request.organization_id = public.my_organization_id()
     and request.status = 'approved';
@@ -479,7 +465,7 @@ begin
 end;
 $delete_approved_vacation_request$;
 
-grant execute on function public.delete_approved_vacation_request(uuid)
+grant execute on function public.delete_approved_vacation_request(uuid, text)
 to authenticated;
 
 insert into public.vacation_year_settings (organization_id, year, is_open, opened_at)

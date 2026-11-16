@@ -17,6 +17,7 @@ type ApprovedVacationDay = {
     date: string;
     employeeName: string;
     approvedBy: string;
+    belongsToCurrentUser: boolean;
 };
 
 type CalendarHoliday = {
@@ -27,6 +28,7 @@ type CalendarHoliday = {
 type PendingVacationDay = {
     date: string;
     employeeName: string;
+    belongsToCurrentUser: boolean;
 };
 
 type VacationCalendarProps = {
@@ -93,10 +95,17 @@ export function VacationCalendar({
         today.getMonth(),
         today.getDate()
     );
-    const approvedByDate = useMemo(
-        () => new Map(approvedDays.map((entry) => [entry.date, entry])),
-        [approvedDays]
-    );
+    const approvedByDate = useMemo(() => {
+        const grouped = new Map<string, ApprovedVacationDay[]>();
+
+        for (const approvedDay of approvedDays) {
+            const entries = grouped.get(approvedDay.date) ?? [];
+            entries.push(approvedDay);
+            grouped.set(approvedDay.date, entries);
+        }
+
+        return grouped;
+    }, [approvedDays]);
     const holidayByDate = useMemo(
         () => new Map(holidays.map((holiday) => [holiday.date, holiday])),
         [holidays]
@@ -196,17 +205,23 @@ export function VacationCalendar({
                                     const value = dateValue(year, monthIndex, day);
                                     const weekday = new Date(year, monthIndex, day).getDay();
                                     const weekend = weekday === 0 || weekday === 6;
-                                    const approved = approvedByDate.get(value);
+                                    const approved = approvedByDate.get(value) ?? [];
                                     const holiday = holidayByDate.get(value);
                                     const pending = pendingByDate.get(value) ?? [];
                                     const selected = selectedDates.has(value);
                                     const past = value < todayValue;
+                                    const belongsToCurrentUser =
+                                        approved.some(
+                                            (entry) => entry.belongsToCurrentUser
+                                        ) ||
+                                        pending.some(
+                                            (entry) => entry.belongsToCurrentUser
+                                        );
                                     const disabled =
                                         weekend ||
                                         past ||
                                         Boolean(holiday) ||
-                                        pending.length > 0 ||
-                                        Boolean(approved) ||
+                                        belongsToCurrentUser ||
                                         !isOpen ||
                                         !canRequest;
 
@@ -217,8 +232,25 @@ export function VacationCalendar({
                                             disabled={disabled}
                                             onClick={() => toggleDate(value)}
                                             title={
-                                                approved
-                                                    ? `${approved.employeeName} · aprovado por ${approved.approvedBy}`
+                                                approved.length > 0
+                                                    ? [
+                                                          approved
+                                                              .map(
+                                                                  (entry) =>
+                                                                      `${entry.employeeName} · aprovado por ${entry.approvedBy}`
+                                                              )
+                                                              .join(" | "),
+                                                          pending.length > 0
+                                                              ? `Pedido pendente: ${pending
+                                                                    .map(
+                                                                        (entry) =>
+                                                                            entry.employeeName
+                                                                    )
+                                                                    .join(", ")}`
+                                                              : null,
+                                                      ]
+                                                          .filter(Boolean)
+                                                          .join(" | ")
                                                     : pending.length > 0
                                                       ? `Pedido pendente: ${pending
                                                             .map((entry) => entry.employeeName)
@@ -237,29 +269,40 @@ export function VacationCalendar({
                                                     "cursor-not-allowed bg-muted/60 text-muted-foreground",
                                                 !disabled &&
                                                     "hover:border-primary/40 hover:bg-primary/5",
-                                                selected &&
-                                                    "border-primary bg-primary/15 font-semibold text-primary",
-                                                approved &&
-                                                    "cursor-not-allowed border-amber-300 bg-amber-100 text-amber-950 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100",
+                                                approved.length > 0 &&
+                                                    "border-amber-300 bg-amber-100 text-amber-950 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100",
                                                 holiday &&
                                                     "cursor-not-allowed border-rose-300 bg-rose-100 text-rose-950 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100",
                                                 pending.length > 0 &&
-                                                    !approved &&
-                                                    "cursor-not-allowed border-sky-300 bg-sky-100 text-sky-950 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-100"
+                                                    approved.length === 0 &&
+                                                    "border-sky-300 bg-sky-100 text-sky-950 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-100",
+                                                selected &&
+                                                    "border-primary font-semibold ring-2 ring-primary"
                                             )}
                                         >
                                             <span>{day}</span>
-                                            {approved ? (
+                                            {approved.length > 0 ? (
                                                 <>
                                                     <span className="max-w-full truncate px-0.5 text-[8px] leading-tight">
-                                                        {approved.employeeName.split(" ")[0]}
+                                                        {approved
+                                                            .map(
+                                                                (entry) =>
+                                                                    entry.employeeName.split(" ")[0]
+                                                            )
+                                                            .join(", ")}
                                                     </span>
                                                     <span className="max-w-full truncate px-0.5 text-[7px] leading-tight opacity-75">
-                                                        por {approved.approvedBy.split(" ")[0]}
+                                                        aprovado
                                                     </span>
+                                                    {pending.length > 0 ? (
+                                                        <span className="max-w-full truncate px-0.5 text-[7px] leading-tight text-sky-800 dark:text-sky-200">
+                                                            + {pending.length} pendente
+                                                            {pending.length === 1 ? "" : "s"}
+                                                        </span>
+                                                    ) : null}
                                                 </>
                                             ) : null}
-                                            {!approved && pending.length > 0 ? (
+                                            {approved.length === 0 && pending.length > 0 ? (
                                                 <>
                                                     <span className="max-w-full truncate px-0.5 text-[8px] leading-tight">
                                                         {pending

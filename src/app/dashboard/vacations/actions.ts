@@ -210,6 +210,7 @@ export async function setVacationYearOpen(formData: FormData) {
 
 export async function deleteApprovedVacationRequest(formData: FormData) {
     const requestId = String(formData.get("request_id") ?? "").trim();
+    const comment = String(formData.get("comment") ?? "").trim();
 
     if (!uuidPattern.test(requestId)) {
         return;
@@ -223,6 +224,7 @@ export async function deleteApprovedVacationRequest(formData: FormData) {
     const supabase = await createClient();
     const { error } = await supabase.rpc("delete_approved_vacation_request", {
         p_request_id: requestId,
+        p_comment: comment || null,
     });
 
     if (error) {

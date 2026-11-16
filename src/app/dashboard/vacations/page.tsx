@@ -51,7 +51,7 @@ type Employee = {
 type VacationRequest = {
     id: string;
     employee_id: string;
-    status: "pending" | "approved" | "rejected";
+    status: "pending" | "approved" | "rejected" | "canceled";
     reviewed_by_name: string | null;
     rejection_reason: string | null;
     created_at: string;
@@ -126,6 +126,10 @@ function vacationStatusLabel(status: VacationRequest["status"]) {
 
     if (status === "rejected") {
         return "Rejeitado";
+    }
+
+    if (status === "canceled") {
+        return "Anulado";
     }
 
     return "Pendente";
@@ -238,6 +242,7 @@ export default async function VacationsPage({ searchParams }: VacationsPageProps
                 date: day.vacation_date,
                 employeeName: employee.name,
                 approvedBy: request.reviewed_by_name ?? "Administrador",
+                belongsToCurrentUser: request.employee_id === myBalance?.employee_id,
             },
         ];
     });
@@ -253,6 +258,7 @@ export default async function VacationsPage({ searchParams }: VacationsPageProps
             {
                 date: day.vacation_date,
                 employeeName: employee.name,
+                belongsToCurrentUser: request.employee_id === myBalance?.employee_id,
             },
         ];
     });
@@ -385,10 +391,12 @@ export default async function VacationsPage({ searchParams }: VacationsPageProps
                                                         ? ` · aprovado por ${request.reviewed_by_name}`
                                                         : ""}
                                                 </p>
-                                                {request.status === "rejected" &&
+                                                {["rejected", "canceled"].includes(
+                                                    request.status
+                                                ) &&
                                                 request.rejection_reason ? (
                                                     <p className="mt-2 text-sm text-destructive">
-                                                        Motivo: {request.rejection_reason}
+                                                        Comentário: {request.rejection_reason}
                                                     </p>
                                                 ) : null}
                                             </div>
@@ -396,7 +404,9 @@ export default async function VacationsPage({ searchParams }: VacationsPageProps
                                                 variant={
                                                     request.status === "approved"
                                                         ? "secondary"
-                                                        : request.status === "rejected"
+                                                        : ["rejected", "canceled"].includes(
+                                                                request.status
+                                                            )
                                                           ? "destructive"
                                                           : "outline"
                                                 }
@@ -607,6 +617,12 @@ export default async function VacationsPage({ searchParams }: VacationsPageProps
                                                         type="hidden"
                                                         name="decision"
                                                         value="rejected"
+                                                    />
+                                                    <input
+                                                        name="rejection_reason"
+                                                        maxLength={500}
+                                                        placeholder="Comentário (opcional)"
+                                                        className="mr-2 h-8 w-48 rounded-md border border-input bg-background px-2 text-sm"
                                                     />
                                                     <Button type="submit" size="sm" variant="destructive">
                                                         <XIcon /> Rejeitar

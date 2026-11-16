@@ -54,6 +54,16 @@ export function DeleteApprovedVacationButton({
                 </DialogHeader>
                 <form action={deleteApprovedVacationRequest}>
                     <input type="hidden" name="request_id" value={requestId} />
+                    <label className="mb-4 grid gap-2 text-sm">
+                        Comentário (opcional)
+                        <textarea
+                            name="comment"
+                            rows={3}
+                            maxLength={500}
+                            placeholder="Ex.: alteração solicitada pelo funcionário"
+                            className="min-h-20 rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                        />
+                    </label>
                     <DialogFooter>
                         <Button
                             type="button"
