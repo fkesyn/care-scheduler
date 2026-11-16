@@ -19,9 +19,15 @@ type ApprovedVacationDay = {
     approvedBy: string;
 };
 
+type CalendarHoliday = {
+    date: string;
+    name: string;
+};
+
 type VacationCalendarProps = {
     approvedDays: ApprovedVacationDay[];
     canRequest: boolean;
+    holidays: CalendarHoliday[];
     isOpen: boolean;
     remainingDays: number;
     year: number;
@@ -67,6 +73,7 @@ function SubmitButton({ disabled, count }: { disabled: boolean; count: number })
 export function VacationCalendar({
     approvedDays,
     canRequest,
+    holidays,
     isOpen,
     remainingDays,
     year,
@@ -82,6 +89,10 @@ export function VacationCalendar({
     const approvedByDate = useMemo(
         () => new Map(approvedDays.map((entry) => [entry.date, entry])),
         [approvedDays]
+    );
+    const holidayByDate = useMemo(
+        () => new Map(holidays.map((holiday) => [holiday.date, holiday])),
+        [holidays]
     );
 
     useEffect(() => {
@@ -118,6 +129,10 @@ export function VacationCalendar({
                 <div className="flex items-center gap-2">
                     <span className="size-3 rounded-sm bg-amber-200 ring-1 ring-amber-400 dark:bg-amber-950" />
                     Férias aprovadas
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className="size-3 rounded-sm bg-rose-100 ring-1 ring-rose-300 dark:bg-rose-950" />
+                    Feriado
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground">
                     <span className="size-3 rounded-sm bg-muted" />
@@ -160,11 +175,13 @@ export function VacationCalendar({
                                     const weekday = new Date(year, monthIndex, day).getDay();
                                     const weekend = weekday === 0 || weekday === 6;
                                     const approved = approvedByDate.get(value);
+                                    const holiday = holidayByDate.get(value);
                                     const selected = selectedDates.has(value);
                                     const past = value < todayValue;
                                     const disabled =
                                         weekend ||
                                         past ||
+                                        Boolean(holiday) ||
                                         Boolean(approved) ||
                                         !isOpen ||
                                         !canRequest;
@@ -178,6 +195,8 @@ export function VacationCalendar({
                                             title={
                                                 approved
                                                     ? `${approved.employeeName} · aprovado por ${approved.approvedBy}`
+                                                    : holiday
+                                                      ? holiday.name
                                                     : weekend
                                                       ? "Fim de semana"
                                                       : past
@@ -193,7 +212,9 @@ export function VacationCalendar({
                                                 selected &&
                                                     "border-primary bg-primary/15 font-semibold text-primary",
                                                 approved &&
-                                                    "cursor-not-allowed border-amber-300 bg-amber-100 text-amber-950 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100"
+                                                    "cursor-not-allowed border-amber-300 bg-amber-100 text-amber-950 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100",
+                                                holiday &&
+                                                    "cursor-not-allowed border-rose-300 bg-rose-100 text-rose-950 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100"
                                             )}
                                         >
                                             <span>{day}</span>
@@ -206,6 +227,11 @@ export function VacationCalendar({
                                                         por {approved.approvedBy.split(" ")[0]}
                                                     </span>
                                                 </>
+                                            ) : null}
+                                            {holiday ? (
+                                                <span className="max-w-full truncate px-0.5 text-[7px] leading-tight">
+                                                    {holiday.name}
+                                                </span>
                                             ) : null}
                                         </button>
                                     );

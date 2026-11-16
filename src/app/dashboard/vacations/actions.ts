@@ -36,6 +36,10 @@ function vacationErrorMessage(message: string) {
         return "Este pedido ultrapassa o número de dias de férias disponível.";
     }
 
+    if (message.includes("public holidays")) {
+        return "Os feriados não podem ser selecionados como dias de férias.";
+    }
+
     if (message.includes("weekdays")) {
         return "Só podes pedir dias úteis futuros, de segunda a sexta-feira, no mesmo ano.";
     }

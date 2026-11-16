@@ -34,6 +34,7 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { canManageData, getCurrentUserRole } from "@/lib/auth/permissions";
+import { mergeYearHolidays } from "@/lib/holidays/year-holidays";
 import { createClient } from "@/lib/supabase/server";
 
 type VacationsPageProps = {
@@ -146,6 +147,7 @@ export default async function VacationsPage({ searchParams }: VacationsPageProps
         { data: daysData, error: daysError },
         { data: allowancesData, error: allowancesError },
         { data: balanceData, error: balanceError },
+        { data: holidaysData, error: holidaysError },
     ] = await Promise.all([
         supabase
             .from("employees")
@@ -175,6 +177,12 @@ export default async function VacationsPage({ searchParams }: VacationsPageProps
             .select("employee_id, total_days")
             .eq("year", year),
         supabase.rpc("my_vacation_balance", { p_year: year }),
+        supabase
+            .from("public_holidays")
+            .select("holiday_date, name, country_code, region")
+            .eq("country_code", "PT")
+            .gte("holiday_date", `${year}-01-01`)
+            .lte("holiday_date", `${year}-12-31`),
     ]);
 
     const loadError =
@@ -183,7 +191,8 @@ export default async function VacationsPage({ searchParams }: VacationsPageProps
         requestsError ??
         daysError ??
         allowancesError ??
-        balanceError;
+        balanceError ??
+        holidaysError;
 
     if (loadError) {
         return (
@@ -201,6 +210,10 @@ export default async function VacationsPage({ searchParams }: VacationsPageProps
     const days = (daysData ?? []) as VacationDay[];
     const allowances = (allowancesData ?? []) as Allowance[];
     const myBalance = ((balanceData ?? [])[0] ?? null) as MyBalance | null;
+    const holidays = mergeYearHolidays(year, holidaysData ?? []).map((holiday) => ({
+        date: holiday.holiday_date,
+        name: holiday.name,
+    }));
     const employeeById = new Map(employees.map((employee) => [employee.id, employee]));
     const requestById = new Map(requests.map((request) => [request.id, request]));
     const daysByRequest = new Map<string, string[]>();
@@ -539,6 +552,7 @@ export default async function VacationsPage({ searchParams }: VacationsPageProps
                 <VacationCalendar
                     approvedDays={approvedDays}
                     canRequest={Boolean(myBalance)}
+                    holidays={holidays}
                     isOpen={isOpen}
                     remainingDays={remainingDays}
                     year={year}
