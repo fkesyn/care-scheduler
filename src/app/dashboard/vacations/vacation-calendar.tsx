@@ -24,11 +24,17 @@ type CalendarHoliday = {
     name: string;
 };
 
+type PendingVacationDay = {
+    date: string;
+    employeeName: string;
+};
+
 type VacationCalendarProps = {
     approvedDays: ApprovedVacationDay[];
     canRequest: boolean;
     holidays: CalendarHoliday[];
     isOpen: boolean;
+    pendingDays: PendingVacationDay[];
     remainingDays: number;
     year: number;
 };
@@ -75,6 +81,7 @@ export function VacationCalendar({
     canRequest,
     holidays,
     isOpen,
+    pendingDays,
     remainingDays,
     year,
 }: VacationCalendarProps) {
@@ -94,6 +101,17 @@ export function VacationCalendar({
         () => new Map(holidays.map((holiday) => [holiday.date, holiday])),
         [holidays]
     );
+    const pendingByDate = useMemo(() => {
+        const grouped = new Map<string, PendingVacationDay[]>();
+
+        for (const pendingDay of pendingDays) {
+            const entries = grouped.get(pendingDay.date) ?? [];
+            entries.push(pendingDay);
+            grouped.set(pendingDay.date, entries);
+        }
+
+        return grouped;
+    }, [pendingDays]);
 
     useEffect(() => {
         if (state.status === "success") {
@@ -133,6 +151,10 @@ export function VacationCalendar({
                 <div className="flex items-center gap-2">
                     <span className="size-3 rounded-sm bg-rose-100 ring-1 ring-rose-300 dark:bg-rose-950" />
                     Feriado
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className="size-3 rounded-sm bg-sky-100 ring-1 ring-sky-300 dark:bg-sky-950" />
+                    Pedido pendente
                 </div>
                 <div className="flex items-center gap-2 text-muted-foreground">
                     <span className="size-3 rounded-sm bg-muted" />
@@ -176,12 +198,14 @@ export function VacationCalendar({
                                     const weekend = weekday === 0 || weekday === 6;
                                     const approved = approvedByDate.get(value);
                                     const holiday = holidayByDate.get(value);
+                                    const pending = pendingByDate.get(value) ?? [];
                                     const selected = selectedDates.has(value);
                                     const past = value < todayValue;
                                     const disabled =
                                         weekend ||
                                         past ||
                                         Boolean(holiday) ||
+                                        pending.length > 0 ||
                                         Boolean(approved) ||
                                         !isOpen ||
                                         !canRequest;
@@ -195,6 +219,10 @@ export function VacationCalendar({
                                             title={
                                                 approved
                                                     ? `${approved.employeeName} · aprovado por ${approved.approvedBy}`
+                                                    : pending.length > 0
+                                                      ? `Pedido pendente: ${pending
+                                                            .map((entry) => entry.employeeName)
+                                                            .join(", ")}`
                                                     : holiday
                                                       ? holiday.name
                                                     : weekend
@@ -214,7 +242,10 @@ export function VacationCalendar({
                                                 approved &&
                                                     "cursor-not-allowed border-amber-300 bg-amber-100 text-amber-950 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100",
                                                 holiday &&
-                                                    "cursor-not-allowed border-rose-300 bg-rose-100 text-rose-950 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100"
+                                                    "cursor-not-allowed border-rose-300 bg-rose-100 text-rose-950 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-100",
+                                                pending.length > 0 &&
+                                                    !approved &&
+                                                    "cursor-not-allowed border-sky-300 bg-sky-100 text-sky-950 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-100"
                                             )}
                                         >
                                             <span>{day}</span>
@@ -225,6 +256,21 @@ export function VacationCalendar({
                                                     </span>
                                                     <span className="max-w-full truncate px-0.5 text-[7px] leading-tight opacity-75">
                                                         por {approved.approvedBy.split(" ")[0]}
+                                                    </span>
+                                                </>
+                                            ) : null}
+                                            {!approved && pending.length > 0 ? (
+                                                <>
+                                                    <span className="max-w-full truncate px-0.5 text-[8px] leading-tight">
+                                                        {pending
+                                                            .map(
+                                                                (entry) =>
+                                                                    entry.employeeName.split(" ")[0]
+                                                            )
+                                                            .join(", ")}
+                                                    </span>
+                                                    <span className="text-[7px] leading-tight opacity-75">
+                                                        pendente
                                                     </span>
                                                 </>
                                             ) : null}

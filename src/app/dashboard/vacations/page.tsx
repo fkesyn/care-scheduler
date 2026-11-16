@@ -240,6 +240,21 @@ export default async function VacationsPage({ searchParams }: VacationsPageProps
             },
         ];
     });
+    const pendingDays = days.flatMap((day) => {
+        const request = requestById.get(day.request_id);
+        const employee = request ? employeeById.get(request.employee_id) : null;
+
+        if (!request || request.status !== "pending" || !employee) {
+            return [];
+        }
+
+        return [
+            {
+                date: day.vacation_date,
+                employeeName: employee.name,
+            },
+        ];
+    });
     const isOpen = settingsData?.is_open ?? year === 2027;
     const totalDays = Number(myBalance?.total_days ?? 22);
     const approvedCount = Number(myBalance?.approved_days ?? 0);
@@ -554,6 +569,7 @@ export default async function VacationsPage({ searchParams }: VacationsPageProps
                     canRequest={Boolean(myBalance)}
                     holidays={holidays}
                     isOpen={isOpen}
+                    pendingDays={pendingDays}
                     remainingDays={remainingDays}
                     year={year}
                 />
