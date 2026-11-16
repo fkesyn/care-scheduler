@@ -81,6 +81,54 @@ function formatDate(value: string) {
     }).format(new Date(`${value}T00:00:00Z`));
 }
 
+function nextBusinessDate(value: string) {
+    const date = new Date(`${value}T00:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + 1);
+
+    if (date.getUTCDay() === 6) {
+        date.setUTCDate(date.getUTCDate() + 2);
+    } else if (date.getUTCDay() === 0) {
+        date.setUTCDate(date.getUTCDate() + 1);
+    }
+
+    return date.toISOString().slice(0, 10);
+}
+
+function formatVacationPeriods(values: string[]) {
+    const dates = Array.from(new Set(values)).sort();
+    const periods: Array<{ start: string; end: string }> = [];
+
+    for (const date of dates) {
+        const currentPeriod = periods.at(-1);
+
+        if (currentPeriod && nextBusinessDate(currentPeriod.end) === date) {
+            currentPeriod.end = date;
+        } else {
+            periods.push({ start: date, end: date });
+        }
+    }
+
+    return periods
+        .map((period) =>
+            period.start === period.end
+                ? formatDate(period.start)
+                : `${formatDate(period.start)} a ${formatDate(period.end)}`
+        )
+        .join(" · ");
+}
+
+function vacationStatusLabel(status: VacationRequest["status"]) {
+    if (status === "approved") {
+        return "Aprovado";
+    }
+
+    if (status === "rejected") {
+        return "Rejeitado";
+    }
+
+    return "Pendente";
+}
+
 export default async function VacationsPage({ searchParams }: VacationsPageProps) {
     await connection();
 
@@ -185,6 +233,11 @@ export default async function VacationsPage({ searchParams }: VacationsPageProps
     const pendingCount = Number(myBalance?.pending_days ?? 0);
     const remainingDays = Math.max(0, totalDays - approvedCount - pendingCount);
     const pendingRequests = requests.filter((request) => request.status === "pending");
+    const myRequests = myBalance
+        ? requests
+              .filter((request) => request.employee_id === myBalance.employee_id)
+              .sort((first, second) => second.created_at.localeCompare(first.created_at))
+        : [];
     const allowanceByEmployee = new Map(
         allowances.map((allowance) => [allowance.employee_id, allowance.total_days])
     );
@@ -266,13 +319,76 @@ export default async function VacationsPage({ searchParams }: VacationsPageProps
                     </div>
                 )}
 
+                {myBalance ? (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Os meus pedidos de {year}</CardTitle>
+                            <CardDescription>
+                                Consulta os períodos submetidos e o respetivo estado.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid gap-3">
+                            {myRequests.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">
+                                    Ainda não submeteste pedidos para {year}.
+                                </p>
+                            ) : (
+                                myRequests.map((request) => {
+                                    const requestDays = daysByRequest.get(request.id) ?? [];
+
+                                    return (
+                                        <div
+                                            key={request.id}
+                                            className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-start sm:justify-between"
+                                        >
+                                            <div>
+                                                <p className="font-medium">
+                                                    {formatVacationPeriods(requestDays)}
+                                                </p>
+                                                <p className="mt-1 text-sm text-muted-foreground">
+                                                    {requestDays.length}{" "}
+                                                    {requestDays.length === 1
+                                                        ? "dia útil"
+                                                        : "dias úteis"}
+                                                    {request.status === "approved" &&
+                                                    request.reviewed_by_name
+                                                        ? ` · aprovado por ${request.reviewed_by_name}`
+                                                        : ""}
+                                                </p>
+                                                {request.status === "rejected" &&
+                                                request.rejection_reason ? (
+                                                    <p className="mt-2 text-sm text-destructive">
+                                                        Motivo: {request.rejection_reason}
+                                                    </p>
+                                                ) : null}
+                                            </div>
+                                            <Badge
+                                                variant={
+                                                    request.status === "approved"
+                                                        ? "secondary"
+                                                        : request.status === "rejected"
+                                                          ? "destructive"
+                                                          : "outline"
+                                                }
+                                            >
+                                                {vacationStatusLabel(request.status)}
+                                            </Badge>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </CardContent>
+                    </Card>
+                ) : null}
+
                 {isAdmin ? (
                     <Card>
                         <CardHeader>
                             <CardTitle>Configuração administrativa de {year}</CardTitle>
                             <CardDescription>
-                                Abre ou bloqueia o ano e ajusta o saldo individual entre 22 e
-                                25 dias.
+                                Abre ou bloqueia o ano e ajusta o saldo individual. O mínimo é
+                                22 dias, sem limite máximo para permitir transportar dias não
+                                gozados.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="grid gap-5">
@@ -321,19 +437,18 @@ export default async function VacationsPage({ searchParams }: VacationsPageProps
                                                             value={employee.id}
                                                         />
                                                         <input type="hidden" name="year" value={year} />
-                                                        <select
+                                                        <input
+                                                            type="number"
                                                             name="total_days"
                                                             defaultValue={String(
                                                                 allowanceByEmployee.get(employee.id) ?? 22
                                                             )}
-                                                            className="h-8 rounded-md border border-input bg-background px-2 text-sm"
-                                                        >
-                                                            {[22, 23, 24, 25].map((value) => (
-                                                                <option key={value} value={value}>
-                                                                    {value} dias
-                                                                </option>
-                                                            ))}
-                                                        </select>
+                                                            min={22}
+                                                            step={1}
+                                                            className="h-8 w-24 rounded-md border border-input bg-background px-2 text-sm"
+                                                            aria-label={`Saldo anual de ${employee.name}`}
+                                                            required
+                                                        />
                                                         <Button type="submit" size="sm" variant="outline">
                                                             Guardar
                                                         </Button>

@@ -20,7 +20,7 @@ create table if not exists public.employee_vacation_allowances (
   updated_at timestamptz not null default now(),
   primary key (employee_id, year),
   constraint employee_vacation_allowances_year_check check (year >= 2027),
-  constraint employee_vacation_allowances_days_check check (total_days between 22 and 25)
+  constraint employee_vacation_allowances_days_check check (total_days >= 22)
 );
 
 create table if not exists public.vacation_requests (
@@ -118,7 +118,16 @@ create policy "Members can read approved vacations and admins all requests"
 on public.vacation_requests for select to authenticated
 using (
   organization_id = public.my_organization_id()
-  and (status = 'approved' or public.is_admin_user())
+  and (
+    status = 'approved'
+    or public.is_admin_user()
+    or exists (
+      select 1 from public.employees employee
+      where employee.id = employee_id
+        and employee.organization_id = public.my_organization_id()
+        and lower(employee.email) = lower(coalesce(auth.jwt()->>'email', ''))
+    )
+  )
 );
 
 drop policy if exists "Members can read approved vacation days and admins all days"
@@ -130,7 +139,16 @@ using (
     select 1 from public.vacation_requests request
     where request.id = request_id
       and request.organization_id = public.my_organization_id()
-      and (request.status = 'approved' or public.is_admin_user())
+      and (
+        request.status = 'approved'
+        or public.is_admin_user()
+        or exists (
+          select 1 from public.employees employee
+          where employee.id = request.employee_id
+            and employee.organization_id = public.my_organization_id()
+            and lower(employee.email) = lower(coalesce(auth.jwt()->>'email', ''))
+        )
+      )
   )
 );
 

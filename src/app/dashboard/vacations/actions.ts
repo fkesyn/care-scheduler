@@ -125,8 +125,7 @@ export async function updateVacationAllowance(formData: FormData) {
         !Number.isInteger(year) ||
         year < 2027 ||
         !Number.isInteger(totalDays) ||
-        totalDays < 22 ||
-        totalDays > 25
+        totalDays < 22
     ) {
         return;
     }
