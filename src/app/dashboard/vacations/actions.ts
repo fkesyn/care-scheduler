@@ -207,3 +207,27 @@ export async function setVacationYearOpen(formData: FormData) {
 
     revalidatePath(initialPath);
 }
+
+export async function deleteApprovedVacationRequest(formData: FormData) {
+    const requestId = String(formData.get("request_id") ?? "").trim();
+
+    if (!uuidPattern.test(requestId)) {
+        return;
+    }
+
+    const role = await getCurrentUserRole();
+    if (!canManageData(role)) {
+        return;
+    }
+
+    const supabase = await createClient();
+    const { error } = await supabase.rpc("delete_approved_vacation_request", {
+        p_request_id: requestId,
+    });
+
+    if (error) {
+        throw new Error(`Não consegui apagar as férias: ${error.message}`);
+    }
+
+    revalidatePath(initialPath);
+}

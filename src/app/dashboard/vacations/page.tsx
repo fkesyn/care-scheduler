@@ -15,6 +15,7 @@ import {
     setVacationYearOpen,
     updateVacationAllowance,
 } from "@/app/dashboard/vacations/actions";
+import { DeleteApprovedVacationButton } from "@/app/dashboard/vacations/delete-approved-vacation-button";
 import { VacationCalendar } from "@/app/dashboard/vacations/vacation-calendar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -261,6 +262,7 @@ export default async function VacationsPage({ searchParams }: VacationsPageProps
     const pendingCount = Number(myBalance?.pending_days ?? 0);
     const remainingDays = Math.max(0, totalDays - approvedCount - pendingCount);
     const pendingRequests = requests.filter((request) => request.status === "pending");
+    const approvedRequests = requests.filter((request) => request.status === "approved");
     const myRequests = myBalance
         ? requests
               .filter((request) => request.employee_id === myBalance.employee_id)
@@ -487,6 +489,61 @@ export default async function VacationsPage({ searchParams }: VacationsPageProps
                                     </TableBody>
                                 </Table>
                             </div>
+                        </CardContent>
+                    </Card>
+                ) : null}
+
+                {isAdmin ? (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Férias aprovadas</CardTitle>
+                            <CardDescription>
+                                Consulta ou remove períodos já aprovados. Ao apagar, os dias
+                                regressam ao saldo do funcionário.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="grid gap-3">
+                            {approvedRequests.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">
+                                    Não existem férias aprovadas para {year}.
+                                </p>
+                            ) : (
+                                approvedRequests.map((request) => {
+                                    const requestDays = daysByRequest.get(request.id) ?? [];
+                                    const employee = employeeById.get(request.employee_id);
+
+                                    return (
+                                        <div
+                                            key={request.id}
+                                            className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between"
+                                        >
+                                            <div>
+                                                <p className="font-medium">
+                                                    {employee?.name ?? "Funcionário"}
+                                                </p>
+                                                <p className="mt-1 text-sm text-muted-foreground">
+                                                    {formatVacationPeriods(requestDays)} ·{" "}
+                                                    {requestDays.length}{" "}
+                                                    {requestDays.length === 1
+                                                        ? "dia útil"
+                                                        : "dias úteis"}
+                                                </p>
+                                                {request.reviewed_by_name ? (
+                                                    <p className="mt-1 text-xs text-muted-foreground">
+                                                        Aprovado por {request.reviewed_by_name}
+                                                    </p>
+                                                ) : null}
+                                            </div>
+                                            <DeleteApprovedVacationButton
+                                                employeeName={
+                                                    employee?.name ?? "este funcionário"
+                                                }
+                                                requestId={request.id}
+                                            />
+                                        </div>
+                                    );
+                                })
+                            )}
                         </CardContent>
                     </Card>
                 ) : null}
