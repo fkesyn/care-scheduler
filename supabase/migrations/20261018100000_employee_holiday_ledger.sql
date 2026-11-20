@@ -51,6 +51,23 @@ language sql security definer set search_path = public as $$
 $$;
 revoke all on function public.refresh_holiday_balances(uuid) from public, anon, authenticated;
 
+create function public.employee_holiday_balances_at(p_date date)
+returns table(employee_id uuid, ff_days bigint)
+language sql stable security definer set search_path = public as $$
+  select e.id, count(h.id)
+  from public.employees e
+  left join public.employee_holidays h
+    on h.organization_id = e.organization_id
+   and h.employee_id = e.id
+   and (h.holiday_date is null or h.holiday_date <= p_date)
+   and (h.used_date is null or h.used_date > p_date)
+  where e.organization_id = public.my_organization_id()
+    and e.role = 'nurse'
+  group by e.id;
+$$;
+revoke all on function public.employee_holiday_balances_at(date) from public, anon;
+grant execute on function public.employee_holiday_balances_at(date) to authenticated;
+
 create function public.manage_employee_holiday(p_id uuid, p_employee uuid, p_name text, p_date date, p_notes text, p_delete boolean default false)
 returns void language plpgsql security definer set search_path = public as $$
 declare v_org uuid := public.my_organization_id(); v_row public.employee_holidays;

@@ -51,7 +51,7 @@ type ScheduleEntry = {
     }>;
 };
 
-type ScheduleEmployeeFfDay = {
+type EmployeeHolidayBalance = {
     employee_id: string;
     ff_days: number;
 };
@@ -159,7 +159,7 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
         { data: employeesData, error: employeesError },
         { data: shiftTypesData, error: shiftTypesError },
         { data: entriesData, error: entriesError },
-        { data: ffDaysData, error: ffDaysError },
+        { data: holidayBalancesData, error: holidayBalancesError },
         holidaysFromDb,
     ] = await Promise.all([
         supabase
@@ -184,14 +184,17 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
             .eq("schedule_id", schedule.id)
             .gte("work_date", startDate)
             .lte("work_date", endDate),
-        supabase
-            .from("employee_ff_balances")
-            .select("employee_id, ff_days")
-            .eq("organization_id", schedule.organization_id),
+        supabase.rpc("employee_holiday_balances_at", {
+            p_date: endDate,
+        }),
         getHolidaysForDateRange(startDate, endDate),
     ]);
 
-    const loadError = employeesError ?? shiftTypesError ?? entriesError ?? ffDaysError;
+    const loadError =
+        employeesError ??
+        shiftTypesError ??
+        entriesError ??
+        holidayBalancesError;
 
     if (loadError) {
         return (
@@ -207,9 +210,9 @@ export default async function SchedulePrintPage({ params }: PrintSchedulePagePro
     const entries = ((entriesData ?? []) as ScheduleEntry[]).filter((entry) =>
         nurseEmployeeIds.has(entry.employee_id)
     );
-    const ffDays = ((ffDaysData ?? []) as ScheduleEmployeeFfDay[]).filter((row) =>
-        nurseEmployeeIds.has(row.employee_id)
-    );
+    const ffDays = (
+        (holidayBalancesData ?? []) as EmployeeHolidayBalance[]
+    ).filter((row) => nurseEmployeeIds.has(row.employee_id));
     const fallbackHolidays = buildStaticPortugueseHolidays(
         Number(schedule.month.slice(0, 4))
     ).filter(

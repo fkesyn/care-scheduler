@@ -43,6 +43,9 @@ async function count(db, where = 'true') {
 async function balance(db) {
     return (await db.query('select ff_days from employee_ff_balances where employee_id = $1', [nurse])).rows[0].ff_days;
 }
+async function balanceAt(db, date) {
+    return (await db.query('select ff_days::int from employee_holiday_balances_at($1) where employee_id = $2', [date, nurse])).rows[0].ff_days;
+}
 async function validate(db, id = schedule) {
     await db.query('select validate_schedule_holidays($1, $2)', [id, holidays]);
 }
@@ -154,5 +157,21 @@ test('future credits cannot pay an earlier FF day', async () => {
         await entry(db, '2026-10-01', ff); await entry(db, '2026-10-05');
         await assert.rejects(validate(db), /Saldo de feriados insuficiente/);
         assert.equal(await count(db), 0);
+    } finally { await db.close(); }
+});
+
+test('historical balances exclude later credits and restore later deductions', async () => {
+    const db = await setup();
+    try {
+        await db.exec(`delete from employee_holidays where organization_id = '${org}'`);
+        await manual(db, { date: '2026-10-05' });
+        await manual(db, { date: '2026-12-01' });
+        await entry(db, '2026-11-02', ff, nextSchedule);
+        await validate(db, nextSchedule);
+
+        assert.equal(await balance(db), 1);
+        assert.equal(await balanceAt(db, '2026-10-31'), 1);
+        assert.equal(await balanceAt(db, '2026-11-30'), 0);
+        assert.equal(await balanceAt(db, '2026-12-31'), 1);
     } finally { await db.close(); }
 });

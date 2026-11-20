@@ -103,7 +103,7 @@ type ScheduleGenerationWarning = {
     }>;
 };
 
-type ScheduleEmployeeFfDay = {
+type EmployeeHolidayBalance = {
     employee_id: string;
     ff_days: number;
 };
@@ -233,7 +233,7 @@ export default async function ScheduleDetailPage({
         { data: entries, error: entriesError },
         { data: constraints, error: constraintsError },
         { data: generationWarnings, error: generationWarningsError },
-        { data: ffDays, error: ffDaysError },
+        { data: holidayBalances, error: holidayBalancesError },
         { data: holidaysData, error: holidaysError },
     ] = await Promise.all([
         supabase
@@ -316,10 +316,9 @@ export default async function ScheduleDetailPage({
             .eq("schedule_id", schedule.id)
             .order("work_date")
             .order("created_at"),
-        supabase
-            .from("employee_ff_balances")
-            .select("employee_id, ff_days")
-            .eq("organization_id", schedule.organization_id),
+        supabase.rpc("employee_holiday_balances_at", {
+            p_date: endValue,
+        }),
         supabase
             .from("public_holidays")
             .select("holiday_date, name, country_code, region")
@@ -334,7 +333,7 @@ export default async function ScheduleDetailPage({
         entriesError ??
         constraintsError ??
         generationWarningsError ??
-        ffDaysError ??
+        holidayBalancesError ??
         holidaysError;
 
     if (loadError) {
@@ -367,9 +366,9 @@ export default async function ScheduleDetailPage({
         (warning) =>
             !warning.employee_id || nurseEmployeeIds.has(warning.employee_id)
     );
-    const ffDayRows = ((ffDays ?? []) as ScheduleEmployeeFfDay[]).filter((row) =>
-        nurseEmployeeIds.has(row.employee_id)
-    );
+    const ffDayRows = (
+        (holidayBalances ?? []) as EmployeeHolidayBalance[]
+    ).filter((row) => nurseEmployeeIds.has(row.employee_id));
     const ffDaysByEmployee = new Map(
         ffDayRows.map((row) => [row.employee_id, row.ff_days])
     );
